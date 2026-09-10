@@ -245,8 +245,10 @@ public static class ProjectScaffolder
 
         const float roomHeight = 5f;
         const float wallThickness = 0.3f;
-        const float doorWidth = 4f;
-        const float doorHeight = 3f;
+        const float doorWidth = 5f;
+        // Characters stand ~3.33 units tall (CharacterScaleFix.TargetHeight); the old 3-unit
+        // doorway had their heads/hats visibly clipping through the lintel walking through it.
+        const float doorHeight = 4.2f;
 
         EnsureFolder(RoomMaterialsFolder);
         Material galleryFloorMat = CreateColorMaterial(RoomMaterialsFolder + "/GalleryFloor.mat", new Color(0.33f, 0.35f, 0.38f));

@@ -9,6 +9,13 @@ namespace ShootingGallery.Gameplay
     /// readied, left click fires (one of six shots) and R reloads instantly. Not server-validated
     /// yet - matches PlayerMovement's "client-authoritative for now" approach; revisit once this
     /// needs to be trusted (e.g. actually hitting the other player in a duel).
+    ///
+    /// While readied, the upper arm/forearm bones are also rotated (procedurally, no animation
+    /// clips involved) to bring the gun up into the owner's own first-person view - the camera is
+    /// fixed at eye height and doesn't otherwise "see" the character's own hand. The raise angles
+    /// below are a rough starting guess: exact rig axis conventions can't be verified without
+    /// eyes on the render, so tune upperArmRaiseEuler/forearmRaiseEuler live in the Inspector
+    /// during Play mode (they reapply continuously, not just on press) until the pose looks right.
     /// </summary>
     public class PlayerWeapon : NetworkBehaviour
     {
@@ -18,6 +25,12 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private Vector3 revolverLocalPositionOffset = Vector3.zero;
         [SerializeField] private Vector3 revolverLocalEulerOffset = Vector3.zero;
         [SerializeField] private string handBoneName = "CC_Base_R_Hand";
+
+        [Header("Arm raise pose when readied (rough guess - tune live in Play mode)")]
+        [SerializeField] private string upperArmBoneName = "CC_Base_R_Upperarm";
+        [SerializeField] private string forearmBoneName = "CC_Base_R_Forearm";
+        [SerializeField] private Vector3 upperArmRaiseEuler = new Vector3(-70f, 0f, 0f);
+        [SerializeField] private Vector3 forearmRaiseEuler = new Vector3(-90f, 0f, 0f);
 
         public readonly NetworkVariable<bool> IsReadied = new NetworkVariable<bool>(
             false,
@@ -30,6 +43,10 @@ namespace ShootingGallery.Gameplay
             NetworkVariableWritePermission.Owner);
 
         private Transform currentHandBone;
+        private Transform upperArmBone;
+        private Transform forearmBone;
+        private Quaternion upperArmBindRotation;
+        private Quaternion forearmBindRotation;
         private GameObject spawnedRevolver;
 
         public override void OnNetworkSpawn()
@@ -44,6 +61,11 @@ namespace ShootingGallery.Gameplay
 
         private void Update()
         {
+            // Runs for every client, not just the owner - the raised-arm pose is a third-person
+            // pose everyone needs to see, and reapplying every frame (rather than only on the E
+            // press) is what makes the Inspector fields tunable live during Play mode.
+            ApplyArmPose();
+
             if (!IsOwner || Keyboard.current == null)
             {
                 return;
@@ -89,17 +111,50 @@ namespace ShootingGallery.Gameplay
         }
 
         /// <summary>Called by PlayerController whenever the random character visual (re)spawns,
-        /// since the hand bone to attach to lives inside that instance. Runs on every client, not
+        /// since the hand/arm bones to use live inside that instance. Runs on every client, not
         /// just the owner - each client holds its own local copy of the visual hierarchy.</summary>
         public void OnCharacterVisualChanged(GameObject characterVisual)
         {
-            currentHandBone = characterVisual != null ? FindDeepChild(characterVisual.transform, handBoneName) : null;
+            if (characterVisual != null)
+            {
+                currentHandBone = FindDeepChild(characterVisual.transform, handBoneName);
+                upperArmBone = FindDeepChild(characterVisual.transform, upperArmBoneName);
+                forearmBone = FindDeepChild(characterVisual.transform, forearmBoneName);
+                upperArmBindRotation = upperArmBone != null ? upperArmBone.localRotation : Quaternion.identity;
+                forearmBindRotation = forearmBone != null ? forearmBone.localRotation : Quaternion.identity;
+            }
+            else
+            {
+                currentHandBone = null;
+                upperArmBone = null;
+                forearmBone = null;
+            }
+
             RefreshRevolverAttachment();
         }
 
         private void HandleReadyChanged(bool previous, bool current)
         {
             RefreshRevolverAttachment();
+        }
+
+        private void ApplyArmPose()
+        {
+            bool readied = IsReadied.Value;
+
+            if (upperArmBone != null)
+            {
+                upperArmBone.localRotation = readied
+                    ? upperArmBindRotation * Quaternion.Euler(upperArmRaiseEuler)
+                    : upperArmBindRotation;
+            }
+
+            if (forearmBone != null)
+            {
+                forearmBone.localRotation = readied
+                    ? forearmBindRotation * Quaternion.Euler(forearmRaiseEuler)
+                    : forearmBindRotation;
+            }
         }
 
         private void RefreshRevolverAttachment()
@@ -118,6 +173,19 @@ namespace ShootingGallery.Gameplay
             spawnedRevolver = Instantiate(revolverPrefab, currentHandBone);
             spawnedRevolver.transform.localPosition = revolverLocalPositionOffset;
             spawnedRevolver.transform.localRotation = Quaternion.Euler(revolverLocalEulerOffset);
+
+            // The hand bone lives inside a character shrunk down by CharacterScaleFix (to ~1/6-1/8
+            // its raw size), and Instantiate(prefab, parent) keeps the prefab's own baked local
+            // scale - so without this correction the revolver inherits that shrink and comes out
+            // ~6x too big (its 0.3-unit target scale divided by the hand bone's ~0.16 world
+            // scale). Counteract the parent's lossy scale so it renders at its intended size
+            // regardless of which character (and therefore which shrink factor) is currently worn.
+            Vector3 parentLossyScale = currentHandBone.lossyScale;
+            Vector3 prefabScale = revolverPrefab.transform.localScale;
+            spawnedRevolver.transform.localScale = new Vector3(
+                prefabScale.x / Mathf.Max(parentLossyScale.x, 0.0001f),
+                prefabScale.y / Mathf.Max(parentLossyScale.y, 0.0001f),
+                prefabScale.z / Mathf.Max(parentLossyScale.z, 0.0001f));
         }
 
         private static Transform FindDeepChild(Transform parent, string name)
