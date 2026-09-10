@@ -138,6 +138,8 @@ GameObject:
   - component: {fileID: 5619204433333733468}
   - component: {fileID: 8034118913834223671}
   - component: {fileID: 8097100977116504719}
+  - component: {fileID: 2217646062628754983}
+  - component: {fileID: 5466671227527291175}
   m_Layer: 0
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -291,7 +293,7 @@ MonoBehaviour:
   RotationMaxInterpolationTime: 0.1
   ScaleLerpSmoothing: 1
   ScaleMaxInterpolationTime: 0.1
-  AuthorityMode: 0
+  AuthorityMode: 1
   TickSyncChildren: 0
   UseUnreliableDeltas: 0
   SyncPositionX: 1
@@ -340,3 +342,46 @@ MonoBehaviour:
   - {fileID: 5625981424810752771, guid: 25ce75122f5c53248b2f751ba16cff2b, type: 3}
   - {fileID: 662867230273331030, guid: 62ae318dd6eeccc4485bff18a91c10c9, type: 3}
   characterVisualScale: 1
+--- !u!143 &2217646062628754983
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 2
+  m_Radius: 0.5
+  m_SlopeLimit: 45
+  m_StepOffset: 0.3
+  m_SkinWidth: 0.08
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &5466671227527291175
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 78946a27e86df7643949908f1c54d471, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.PlayerMovement
+  ShowTopMostFoldoutHeaderGroup: 1
+  cameraPivot: {fileID: 8076243999419001527}
+  moveSpeed: 5
+  mouseSensitivity: 0.15
+  gravity: -18
+  pitchClamp: 85

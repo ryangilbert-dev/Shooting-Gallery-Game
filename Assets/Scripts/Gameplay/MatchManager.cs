@@ -19,6 +19,10 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private Transform playerASpawnPoint;
         [SerializeField] private Transform playerBSpawnPoint;
 
+        [Header("Bar (lobby) spawn points - where players land on connect")]
+        [SerializeField] private Transform barSpawnPointA;
+        [SerializeField] private Transform barSpawnPointB;
+
         public readonly NetworkVariable<GamePhase> CurrentPhase = new NetworkVariable<GamePhase>(
             GamePhase.WaitingForPlayers,
             NetworkVariableReadPermission.Everyone,
@@ -33,6 +37,11 @@ namespace ShootingGallery.Gameplay
             ulong.MaxValue,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+
+        // Server-only bookkeeping - no client needs to read these directly, they only ever
+        // observe the CurrentPhase change that results from both being true.
+        private bool playerAEnteredGallery;
+        private bool playerBEnteredGallery;
 
         private void Awake()
         {
@@ -86,10 +95,9 @@ namespace ShootingGallery.Gameplay
 
             PositionPlayerIfSpawned(clientId);
 
-            if (PlayerAClientId.Value != ulong.MaxValue && PlayerBClientId.Value != ulong.MaxValue)
-            {
-                CurrentPhase.Value = GamePhase.GalleryPhase;
-            }
+            // Both connected just means both are standing in the bar together now - the match
+            // itself doesn't start (GalleryPhase) until they both walk through the gallery
+            // doorway, handled by NotifyPlayerEnteredGallery.
         }
 
         private void HandleClientDisconnected(ulong clientId)
@@ -104,6 +112,8 @@ namespace ShootingGallery.Gameplay
                 PlayerBClientId.Value = ulong.MaxValue;
             }
 
+            playerAEnteredGallery = false;
+            playerBEnteredGallery = false;
             CurrentPhase.Value = GamePhase.WaitingForPlayers;
         }
 
@@ -115,13 +125,56 @@ namespace ShootingGallery.Gameplay
                 return;
             }
 
-            Transform spawnPoint = clientId == PlayerAClientId.Value ? playerASpawnPoint : playerBSpawnPoint;
+            Transform spawnPoint = clientId == PlayerAClientId.Value ? barSpawnPointA : barSpawnPointB;
             if (spawnPoint == null)
             {
                 return;
             }
 
             client.PlayerObject.transform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
+        }
+
+        /// <summary>
+        /// Called (server-only) by GalleryEntryTrigger when a connected player's collider passes
+        /// through the doorway between the bar and the gallery. Teleports them to their assigned
+        /// lane; once both players have entered, starts the match (GalleryPhase).
+        /// </summary>
+        public void NotifyPlayerEnteredGallery(ulong clientId)
+        {
+            if (!IsServer || CurrentPhase.Value != GamePhase.WaitingForPlayers)
+            {
+                return;
+            }
+
+            LaneSide lane = GetLaneForClient(clientId);
+            if (lane == LaneSide.None)
+            {
+                return;
+            }
+
+            if (lane == LaneSide.A)
+            {
+                playerAEnteredGallery = true;
+            }
+            else
+            {
+                playerBEnteredGallery = true;
+            }
+
+            if (NetworkManager.ConnectedClients.TryGetValue(clientId, out NetworkClient client) &&
+                client.PlayerObject != null)
+            {
+                Transform spawnPoint = lane == LaneSide.A ? playerASpawnPoint : playerBSpawnPoint;
+                if (spawnPoint != null)
+                {
+                    client.PlayerObject.transform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
+                }
+            }
+
+            if (playerAEnteredGallery && playerBEnteredGallery)
+            {
+                CurrentPhase.Value = GamePhase.GalleryPhase;
+            }
         }
 
         public LaneSide GetLaneForClient(ulong clientId)
