@@ -268,6 +268,16 @@ public static class ProjectScaffolder
         Transform spawnA = BuildLane("GalleryLaneA", galleryRoom.transform, new Vector3(-10f, 0f, 0f), Vector3.right);
         Transform spawnB = BuildLane("GalleryLaneB", galleryRoom.transform, new Vector3(10f, 0f, 0f), Vector3.left);
 
+        // Simple standing placeholder target for testing aim/fire, ahead of Lane A's spawn point.
+        // Not a full target system yet - no hit detection wired up, just something to shoot at.
+        Material targetMat = CreateColorMaterial(RoomMaterialsFolder + "/PracticeTarget.mat", new Color(0.75f, 0.15f, 0.1f));
+        GameObject target = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        target.name = "PracticeTarget";
+        target.transform.SetParent(galleryRoom.transform, false);
+        target.transform.position = new Vector3(-5f, 0.75f, -5f);
+        target.transform.localScale = new Vector3(0.6f, 0.75f, 0.6f);
+        target.GetComponent<Renderer>().sharedMaterial = targetMat;
+
         GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
         wall.name = "DividerWall";
         wall.transform.SetParent(galleryRoom.transform, false);

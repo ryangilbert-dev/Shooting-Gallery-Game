@@ -11,7 +11,10 @@ using UnityEngine;
 public static class CharacterScaleFix
 {
     private const string PrefabFolder = "Assets/Prefabs/Characters";
-    private const float TargetHeight = 5f * (2f / 3f);
+
+    /// <summary>Exposed for PlayerMovementSetup, which needs this to position the camera at eye
+    /// height now that every character is normalized to (roughly) the same height.</summary>
+    public const float TargetHeight = 5f * (2f / 3f);
 
     [MenuItem("Tools/Shooting Gallery/Fix Character Scale")]
     public static void FixScale()

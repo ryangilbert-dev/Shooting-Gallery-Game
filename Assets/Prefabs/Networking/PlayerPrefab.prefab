@@ -58,7 +58,7 @@ Transform:
   m_GameObject: {fileID: 2593294046197483721}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.6, z: 0.15}
+  m_LocalPosition: {x: 0, y: 2.0666668, z: 0.15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -140,6 +140,7 @@ GameObject:
   - component: {fileID: 8097100977116504719}
   - component: {fileID: 2217646062628754983}
   - component: {fileID: 5466671227527291175}
+  - component: {fileID: 5498204607071548275}
   m_Layer: 0
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -385,3 +386,20 @@ MonoBehaviour:
   mouseSensitivity: 0.15
   gravity: -18
   pitchClamp: 85
+--- !u!114 &5498204607071548275
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e6abfac373baa34f8d4288ad5ac36a2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.PlayerWeapon
+  ShowTopMostFoldoutHeaderGroup: 1
+  revolverPrefab: {fileID: 2450527637986887643, guid: 8134158db50e0ee45ba0290cd710f66b, type: 3}
+  revolverLocalPositionOffset: {x: 0, y: 0, z: 0}
+  revolverLocalEulerOffset: {x: 0, y: 0, z: 0}
+  handBoneName: CC_Base_R_Hand

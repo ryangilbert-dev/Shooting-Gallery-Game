@@ -69,6 +69,7 @@ namespace ShootingGallery.Gameplay
             if (index < 0 || characterVisualPrefabs == null || index >= characterVisualPrefabs.Length ||
                 characterVisualPrefabs[index] == null || characterAttachPoint == null)
             {
+                GetComponent<PlayerWeapon>()?.OnCharacterVisualChanged(null);
                 return;
             }
 
@@ -86,6 +87,10 @@ namespace ShootingGallery.Gameplay
             {
                 placeholderBodyRenderer.enabled = false;
             }
+
+            // The revolver attaches to a hand bone inside whichever character visual is currently
+            // instantiated, so PlayerWeapon needs to know every time it's rebuilt.
+            GetComponent<PlayerWeapon>()?.OnCharacterVisualChanged(spawnedCharacterVisual);
         }
     }
 }

@@ -37,6 +37,21 @@ public static class PlayerMovementSetup
         so.FindProperty("cameraPivot").objectReferenceValue = cameraTransform;
         so.ApplyModifiedPropertiesWithoutUndo();
 
+        // Every character is normalized to roughly the same height (CharacterScaleFix), so a
+        // single computed eye height works for all of them: feet sit at CharacterAttachPoint's
+        // local Y, eyes sit ~92% of the way up from there to account for characters wearing hats
+        // (measured bounds include the hat, which sits a bit above actual eye level).
+        if (cameraTransform != null)
+        {
+            Transform attachPoint = instance.transform.Find("CharacterAttachPoint");
+            float feetY = attachPoint != null ? attachPoint.localPosition.y : -1f;
+            float eyeY = feetY + CharacterScaleFix.TargetHeight * 0.92f;
+
+            Vector3 pos = cameraTransform.localPosition;
+            pos.y = eyeY;
+            cameraTransform.localPosition = pos;
+        }
+
         var networkTransform = instance.GetComponent<NetworkTransform>();
         if (networkTransform != null)
         {
