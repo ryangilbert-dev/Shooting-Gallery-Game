@@ -29,8 +29,13 @@ namespace ShootingGallery.Gameplay
         [Header("Arm raise pose when readied (rough guess - tune live in Play mode)")]
         [SerializeField] private string upperArmBoneName = "CC_Base_R_Upperarm";
         [SerializeField] private string forearmBoneName = "CC_Base_R_Forearm";
-        [SerializeField] private Vector3 upperArmRaiseEuler = new Vector3(-70f, 0f, 0f);
-        [SerializeField] private Vector3 forearmRaiseEuler = new Vector3(-90f, 0f, 0f);
+        // Defaulted to zero (no pose change) rather than guessed - the first blind guess swung
+        // the arm straight into the camera (confirmed via screenshot: an extreme close-up of
+        // mesh interior). Tune these live in the Inspector during Play mode instead: select the
+        // player, find PlayerWeapon, nudge one axis at a time while readied and watching the
+        // Scene view or your own screen, since these reapply every frame.
+        [SerializeField] private Vector3 upperArmRaiseEuler = Vector3.zero;
+        [SerializeField] private Vector3 forearmRaiseEuler = Vector3.zero;
 
         public readonly NetworkVariable<bool> IsReadied = new NetworkVariable<bool>(
             false,
