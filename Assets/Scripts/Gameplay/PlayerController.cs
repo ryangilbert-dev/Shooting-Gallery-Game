@@ -75,7 +75,12 @@ namespace ShootingGallery.Gameplay
             spawnedCharacterVisual = Instantiate(characterVisualPrefabs[index], characterAttachPoint);
             spawnedCharacterVisual.transform.localPosition = Vector3.zero;
             spawnedCharacterVisual.transform.localRotation = Quaternion.identity;
-            spawnedCharacterVisual.transform.localScale = Vector3.one * characterVisualScale;
+
+            // Each character prefab bakes its own corrective scale (see CharacterScaleFix) since
+            // the source models weren't uniformly sized - multiply by that instead of overwriting
+            // it, so characterVisualScale stays available as a global fine-tuning knob on top.
+            Vector3 prefabScale = characterVisualPrefabs[index].transform.localScale;
+            spawnedCharacterVisual.transform.localScale = prefabScale * characterVisualScale;
 
             if (placeholderBodyRenderer != null)
             {
