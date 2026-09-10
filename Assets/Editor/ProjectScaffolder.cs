@@ -23,6 +23,7 @@ public static class ProjectScaffolder
 {
     private const string ScenesFolder = "Assets/Scenes";
     private const string PrefabsFolder = "Assets/Prefabs/Networking";
+    private const string RoomMaterialsFolder = "Assets/Materials/Rooms";
 
     private const string BootstrapScenePath = ScenesFolder + "/Bootstrap.unity";
     private const string MainMenuScenePath = ScenesFolder + "/MainMenu.unity";
@@ -247,10 +248,22 @@ public static class ProjectScaffolder
         const float doorWidth = 4f;
         const float doorHeight = 3f;
 
+        EnsureFolder(RoomMaterialsFolder);
+        Material galleryFloorMat = CreateColorMaterial(RoomMaterialsFolder + "/GalleryFloor.mat", new Color(0.33f, 0.35f, 0.38f));
+        Material galleryWallMat = CreateColorMaterial(RoomMaterialsFolder + "/GalleryWall.mat", new Color(0.55f, 0.57f, 0.62f));
+        Material barFloorMat = CreateColorMaterial(RoomMaterialsFolder + "/BarFloor.mat", new Color(0.42f, 0.28f, 0.16f));
+        Material barWallMat = CreateColorMaterial(RoomMaterialsFolder + "/BarWall.mat", new Color(0.62f, 0.48f, 0.32f));
+        Material ceilingMat = CreateColorMaterial(RoomMaterialsFolder + "/Ceiling.mat", new Color(0.15f, 0.15f, 0.17f));
+        Material dividerWallMat = CreateColorMaterial(RoomMaterialsFolder + "/DividerWall.mat", new Color(0.35f, 0.62f, 0.7f));
+
         // --- Gallery room: two lanes either side of a divider wall, door on its east side ---
+        // Cool grey-blue palette to read as distinct from the bar's warm wood tones - helps
+        // orient which room you're in at a glance, per playtest feedback that flat white/grey
+        // everywhere was disorienting.
         GameObject galleryRoom = new GameObject("GalleryRoom");
         BuildRoomShell(galleryRoom.transform, Vector3.zero, new Vector3(30f, roomHeight, 18f), wallThickness,
-            doorOnEast: true, doorOnWest: false, doorCenterZ: 0f, doorWidth: doorWidth, doorHeight: doorHeight);
+            doorOnEast: true, doorOnWest: false, doorCenterZ: 0f, doorWidth: doorWidth, doorHeight: doorHeight,
+            floorMat: galleryFloorMat, wallMat: galleryWallMat, ceilingMat: ceilingMat);
 
         Transform spawnA = BuildLane("GalleryLaneA", galleryRoom.transform, new Vector3(-10f, 0f, 0f), Vector3.right);
         Transform spawnB = BuildLane("GalleryLaneB", galleryRoom.transform, new Vector3(10f, 0f, 0f), Vector3.left);
@@ -260,12 +273,14 @@ public static class ProjectScaffolder
         wall.transform.SetParent(galleryRoom.transform, false);
         wall.transform.position = new Vector3(0f, 2.25f, 0f);
         wall.transform.localScale = new Vector3(0.5f, 4.5f, 16f);
+        wall.GetComponent<Renderer>().sharedMaterial = dividerWallMat;
 
         // --- Bar room: player spawn / lobby, door on its west side to meet the gallery's ---
         GameObject barRoom = new GameObject("BarRoom");
         Vector3 barCenter = new Vector3(22f, 0f, 0f);
         BuildRoomShell(barRoom.transform, barCenter, new Vector3(14f, roomHeight, 18f), wallThickness,
-            doorOnEast: false, doorOnWest: true, doorCenterZ: 0f, doorWidth: doorWidth, doorHeight: doorHeight);
+            doorOnEast: false, doorOnWest: true, doorCenterZ: 0f, doorWidth: doorWidth, doorHeight: doorHeight,
+            floorMat: barFloorMat, wallMat: barWallMat, ceilingMat: ceilingMat);
 
         Transform barSpawnA = BuildSpawnPoint(barRoom.transform, barCenter + new Vector3(4f, 1f, -2f), Vector3.left, "BarSpawnPointA");
         Transform barSpawnB = BuildSpawnPoint(barRoom.transform, barCenter + new Vector3(4f, 1f, 2f), Vector3.left, "BarSpawnPointB");
@@ -294,43 +309,44 @@ public static class ProjectScaffolder
     /// <summary>Floor, ceiling and four walls (center.y is floor level); one east/west wall can
     /// have a doorway gap, the rest are solid.</summary>
     private static void BuildRoomShell(Transform parent, Vector3 center, Vector3 size, float wallThickness,
-        bool doorOnEast, bool doorOnWest, float doorCenterZ, float doorWidth, float doorHeight)
+        bool doorOnEast, bool doorOnWest, float doorCenterZ, float doorWidth, float doorHeight,
+        Material floorMat, Material wallMat, Material ceilingMat)
     {
         float hx = size.x / 2f;
         float hz = size.z / 2f;
         float h = size.y;
 
         BuildBox(parent, "Floor", center + new Vector3(0f, -wallThickness / 2f, 0f),
-            new Vector3(size.x + wallThickness * 2f, wallThickness, size.z + wallThickness * 2f));
+            new Vector3(size.x + wallThickness * 2f, wallThickness, size.z + wallThickness * 2f), floorMat);
         BuildBox(parent, "Ceiling", center + new Vector3(0f, h + wallThickness / 2f, 0f),
-            new Vector3(size.x + wallThickness * 2f, wallThickness, size.z + wallThickness * 2f));
+            new Vector3(size.x + wallThickness * 2f, wallThickness, size.z + wallThickness * 2f), ceilingMat);
 
-        BuildBox(parent, "North Wall", center + new Vector3(0f, h / 2f, hz + wallThickness / 2f), new Vector3(size.x, h, wallThickness));
-        BuildBox(parent, "South Wall", center + new Vector3(0f, h / 2f, -hz - wallThickness / 2f), new Vector3(size.x, h, wallThickness));
+        BuildBox(parent, "North Wall", center + new Vector3(0f, h / 2f, hz + wallThickness / 2f), new Vector3(size.x, h, wallThickness), wallMat);
+        BuildBox(parent, "South Wall", center + new Vector3(0f, h / 2f, -hz - wallThickness / 2f), new Vector3(size.x, h, wallThickness), wallMat);
 
         if (doorOnEast)
         {
-            BuildDoorWall(parent, "East Wall", center + new Vector3(hx + wallThickness / 2f, 0f, 0f), size.z, h, wallThickness, doorCenterZ, doorWidth, doorHeight);
+            BuildDoorWall(parent, "East Wall", center + new Vector3(hx + wallThickness / 2f, 0f, 0f), size.z, h, wallThickness, doorCenterZ, doorWidth, doorHeight, wallMat);
         }
         else
         {
-            BuildBox(parent, "East Wall", center + new Vector3(hx + wallThickness / 2f, h / 2f, 0f), new Vector3(wallThickness, h, size.z));
+            BuildBox(parent, "East Wall", center + new Vector3(hx + wallThickness / 2f, h / 2f, 0f), new Vector3(wallThickness, h, size.z), wallMat);
         }
 
         if (doorOnWest)
         {
-            BuildDoorWall(parent, "West Wall", center + new Vector3(-hx - wallThickness / 2f, 0f, 0f), size.z, h, wallThickness, doorCenterZ, doorWidth, doorHeight);
+            BuildDoorWall(parent, "West Wall", center + new Vector3(-hx - wallThickness / 2f, 0f, 0f), size.z, h, wallThickness, doorCenterZ, doorWidth, doorHeight, wallMat);
         }
         else
         {
-            BuildBox(parent, "West Wall", center + new Vector3(-hx - wallThickness / 2f, h / 2f, 0f), new Vector3(wallThickness, h, size.z));
+            BuildBox(parent, "West Wall", center + new Vector3(-hx - wallThickness / 2f, h / 2f, 0f), new Vector3(wallThickness, h, size.z), wallMat);
         }
     }
 
     /// <summary>An east/west-facing wall (runs along Z) with a doorway gap cut out of it: two
     /// side segments plus a lintel above the doorway.</summary>
     private static void BuildDoorWall(Transform parent, string name, Vector3 wallCenter, float wallLength, float height,
-        float thickness, float doorCenterZ, float doorWidth, float doorHeight)
+        float thickness, float doorCenterZ, float doorWidth, float doorHeight, Material material)
     {
         float half = wallLength / 2f;
         float doorHalf = doorWidth / 2f;
@@ -341,30 +357,53 @@ public static class ProjectScaffolder
         if (leftLength > 0.01f)
         {
             float segCenterZ = -half + leftLength / 2f;
-            BuildBox(parent, name + " (Left)", wallCenter + new Vector3(0f, height / 2f, segCenterZ), new Vector3(thickness, height, leftLength));
+            BuildBox(parent, name + " (Left)", wallCenter + new Vector3(0f, height / 2f, segCenterZ), new Vector3(thickness, height, leftLength), material);
         }
 
         if (rightLength > 0.01f)
         {
             float segCenterZ = half - rightLength / 2f;
-            BuildBox(parent, name + " (Right)", wallCenter + new Vector3(0f, height / 2f, segCenterZ), new Vector3(thickness, height, rightLength));
+            BuildBox(parent, name + " (Right)", wallCenter + new Vector3(0f, height / 2f, segCenterZ), new Vector3(thickness, height, rightLength), material);
         }
 
         if (height > doorHeight)
         {
             BuildBox(parent, name + " (Lintel)",
                 wallCenter + new Vector3(0f, doorHeight + (height - doorHeight) / 2f, doorCenterZ),
-                new Vector3(thickness, height - doorHeight, doorWidth));
+                new Vector3(thickness, height - doorHeight, doorWidth), material);
         }
     }
 
-    private static void BuildBox(Transform parent, string name, Vector3 center, Vector3 size)
+    private static void BuildBox(Transform parent, string name, Vector3 center, Vector3 size, Material material = null)
     {
         GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
         go.name = name;
         go.transform.SetParent(parent, false);
         go.transform.position = center;
         go.transform.localScale = size;
+        if (material != null)
+        {
+            go.GetComponent<Renderer>().sharedMaterial = material;
+        }
+    }
+
+    private static Material CreateColorMaterial(string path, Color color)
+    {
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(shader);
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        else
+        {
+            mat.shader = shader;
+        }
+
+        mat.SetColor("_BaseColor", color);
+        EditorUtility.SetDirty(mat);
+        return mat;
     }
 
     private static Transform BuildLane(string name, Transform parent, Vector3 origin, Vector3 facing)
