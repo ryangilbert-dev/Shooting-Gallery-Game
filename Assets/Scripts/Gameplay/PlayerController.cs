@@ -4,18 +4,28 @@ using UnityEngine;
 namespace ShootingGallery.Gameplay
 {
     /// <summary>
-    /// Per-player networked behaviour. M1 scope only: camera/audio ownership so each
-    /// client only sees through their own eyes, plus a lane-colored tint so two Editor
-    /// instances can visually confirm they were assigned to opposite lanes. Aim input,
+    /// Per-player networked behaviour. Handles camera/audio ownership so each client only sees
+    /// through their own eyes, and picks a random cosmetic character model (server-authoritative,
+    /// synced via CharacterIndex) so both clients see the same body on each player. Aim input,
     /// shooting, and dodge movement are added in later milestones.
     /// </summary>
     public class PlayerController : NetworkBehaviour
     {
         [SerializeField] private Camera playerCamera;
         [SerializeField] private AudioListener audioListener;
-        [SerializeField] private Renderer bodyRenderer;
-        [SerializeField] private Material laneAMaterial;
-        [SerializeField] private Material laneBMaterial;
+        [SerializeField] private Renderer placeholderBodyRenderer;
+
+        [Header("Character visuals - server picks one at random per spawn")]
+        [SerializeField] private Transform characterAttachPoint;
+        [SerializeField] private GameObject[] characterVisualPrefabs;
+        [SerializeField] private float characterVisualScale = 1f;
+
+        public readonly NetworkVariable<int> CharacterIndex = new NetworkVariable<int>(
+            -1,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Server);
+
+        private GameObject spawnedCharacterVisual;
 
         public override void OnNetworkSpawn()
         {
@@ -29,49 +39,47 @@ namespace ShootingGallery.Gameplay
                 audioListener.enabled = IsOwner;
             }
 
-            if (MatchManager.Instance != null)
+            if (IsServer && characterVisualPrefabs != null && characterVisualPrefabs.Length > 0)
             {
-                RefreshLaneTint();
-                MatchManager.Instance.PlayerAClientId.OnValueChanged += HandleLaneAssignmentChanged;
-                MatchManager.Instance.PlayerBClientId.OnValueChanged += HandleLaneAssignmentChanged;
+                CharacterIndex.Value = Random.Range(0, characterVisualPrefabs.Length);
             }
+
+            CharacterIndex.OnValueChanged += HandleCharacterIndexChanged;
+            ApplyCharacterVisual(CharacterIndex.Value);
         }
 
         public override void OnNetworkDespawn()
         {
-            if (MatchManager.Instance != null)
+            CharacterIndex.OnValueChanged -= HandleCharacterIndexChanged;
+        }
+
+        private void HandleCharacterIndexChanged(int previous, int current)
+        {
+            ApplyCharacterVisual(current);
+        }
+
+        private void ApplyCharacterVisual(int index)
+        {
+            if (spawnedCharacterVisual != null)
             {
-                MatchManager.Instance.PlayerAClientId.OnValueChanged -= HandleLaneAssignmentChanged;
-                MatchManager.Instance.PlayerBClientId.OnValueChanged -= HandleLaneAssignmentChanged;
+                Destroy(spawnedCharacterVisual);
+                spawnedCharacterVisual = null;
             }
-        }
 
-        private void HandleLaneAssignmentChanged(ulong previous, ulong current)
-        {
-            RefreshLaneTint();
-        }
-
-        private void RefreshLaneTint()
-        {
-            if (bodyRenderer == null || MatchManager.Instance == null)
+            if (index < 0 || characterVisualPrefabs == null || index >= characterVisualPrefabs.Length ||
+                characterVisualPrefabs[index] == null || characterAttachPoint == null)
             {
                 return;
             }
 
-            switch (MatchManager.Instance.GetLaneForClient(OwnerClientId))
+            spawnedCharacterVisual = Instantiate(characterVisualPrefabs[index], characterAttachPoint);
+            spawnedCharacterVisual.transform.localPosition = Vector3.zero;
+            spawnedCharacterVisual.transform.localRotation = Quaternion.identity;
+            spawnedCharacterVisual.transform.localScale = Vector3.one * characterVisualScale;
+
+            if (placeholderBodyRenderer != null)
             {
-                case LaneSide.A:
-                    if (laneAMaterial != null)
-                    {
-                        bodyRenderer.material = laneAMaterial;
-                    }
-                    break;
-                case LaneSide.B:
-                    if (laneBMaterial != null)
-                    {
-                        bodyRenderer.material = laneBMaterial;
-                    }
-                    break;
+                placeholderBodyRenderer.enabled = false;
             }
         }
     }

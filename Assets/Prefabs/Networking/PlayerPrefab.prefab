@@ -1,5 +1,36 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1230783146143995207
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6931683652326515349}
+  m_Layer: 0
+  m_Name: CharacterAttachPoint
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6931683652326515349
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1230783146143995207}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: -1, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 6961472420287072490}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2593294046197483721
 GameObject:
   m_ObjectHideFlags: 0
@@ -128,6 +159,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 8076243999419001527}
+  - {fileID: 6931683652326515349}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &2453174460991153801
@@ -168,7 +200,7 @@ MeshRenderer:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4994614983274320349}
-  m_Enabled: 1
+  m_Enabled: 0
   m_CastShadows: 1
   m_ReceiveShadows: 1
   m_DynamicOccludee: 1
@@ -296,6 +328,15 @@ MonoBehaviour:
   ShowTopMostFoldoutHeaderGroup: 1
   playerCamera: {fileID: 8849972540479262321}
   audioListener: {fileID: 4563126789361550508}
-  bodyRenderer: {fileID: 4385201438639349765}
-  laneAMaterial: {fileID: 2100000, guid: 11cfd21fc4580fe4598323c970e62ab2, type: 2}
-  laneBMaterial: {fileID: 2100000, guid: d0c0f61bb61adb3439efe726fbc10970, type: 2}
+  placeholderBodyRenderer: {fileID: 4385201438639349765}
+  characterAttachPoint: {fileID: 6931683652326515349}
+  characterVisualPrefabs:
+  - {fileID: 3756328823670145159, guid: 1e767724b81636144aa774204af98526, type: 3}
+  - {fileID: 8693272744962282259, guid: a41a437c653515a4abeceb5ece9fa767, type: 3}
+  - {fileID: 133164472396149820, guid: 2c838d1bcb2ca854c96c01f57ffc43e2, type: 3}
+  - {fileID: 3392906278296501420, guid: 29343a42c89c4924bb7408941e02eadb, type: 3}
+  - {fileID: 4050117914049525787, guid: 3e8701a75e1b0864d81f9ad9762cd514, type: 3}
+  - {fileID: 3643601907161938042, guid: 6e2e469a5f38cc649a9c31da7e449917, type: 3}
+  - {fileID: 5625981424810752771, guid: 25ce75122f5c53248b2f751ba16cff2b, type: 3}
+  - {fileID: 662867230273331030, guid: 62ae318dd6eeccc4485bff18a91c10c9, type: 3}
+  characterVisualScale: 1

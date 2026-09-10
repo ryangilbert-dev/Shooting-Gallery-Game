@@ -23,7 +23,6 @@ public static class ProjectScaffolder
 {
     private const string ScenesFolder = "Assets/Scenes";
     private const string PrefabsFolder = "Assets/Prefabs/Networking";
-    private const string MaterialsFolder = "Assets/Materials";
 
     private const string BootstrapScenePath = ScenesFolder + "/Bootstrap.unity";
     private const string MainMenuScenePath = ScenesFolder + "/MainMenu.unity";
@@ -34,12 +33,8 @@ public static class ProjectScaffolder
     public static void ScaffoldM1()
     {
         EnsureFolder(PrefabsFolder);
-        EnsureFolder(MaterialsFolder);
 
-        Material laneAMat = CreateOrReplaceMaterial(MaterialsFolder + "/LaneAMaterial.mat", new Color(0.2f, 0.45f, 1f));
-        Material laneBMat = CreateOrReplaceMaterial(MaterialsFolder + "/LaneBMaterial.mat", new Color(1f, 0.35f, 0.25f));
-
-        GameObject playerPrefab = BuildPlayerPrefab(laneAMat, laneBMat);
+        GameObject playerPrefab = BuildPlayerPrefab();
 
         BuildBootstrapScene(playerPrefab);
         BuildMainMenuScene();
@@ -71,26 +66,7 @@ public static class ProjectScaffolder
         AssetDatabase.CreateFolder(parent, leaf);
     }
 
-    private static Material CreateOrReplaceMaterial(string path, Color color)
-    {
-        var shader = Shader.Find("Universal Render Pipeline/Lit");
-        Material mat = AssetDatabase.LoadAssetAtPath<Material>(path);
-        if (mat == null)
-        {
-            mat = new Material(shader);
-            AssetDatabase.CreateAsset(mat, path);
-        }
-        else
-        {
-            mat.shader = shader;
-        }
-
-        mat.SetColor("_BaseColor", color);
-        EditorUtility.SetDirty(mat);
-        return mat;
-    }
-
-    private static GameObject BuildPlayerPrefab(Material laneAMat, Material laneBMat)
+    private static GameObject BuildPlayerPrefab()
     {
         GameObject root = GameObject.CreatePrimitive(PrimitiveType.Capsule);
         root.name = "PlayerPrefab";
@@ -110,9 +86,7 @@ public static class ProjectScaffolder
         var so = new SerializedObject(controller);
         so.FindProperty("playerCamera").objectReferenceValue = cam;
         so.FindProperty("audioListener").objectReferenceValue = listener;
-        so.FindProperty("bodyRenderer").objectReferenceValue = root.GetComponent<Renderer>();
-        so.FindProperty("laneAMaterial").objectReferenceValue = laneAMat;
-        so.FindProperty("laneBMaterial").objectReferenceValue = laneBMat;
+        so.FindProperty("placeholderBodyRenderer").objectReferenceValue = root.GetComponent<Renderer>();
         so.ApplyModifiedPropertiesWithoutUndo();
 
         GameObject prefab = PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
