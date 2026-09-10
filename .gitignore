@@ -62,3 +62,6 @@ crashlytics-build.properties
 .vscode/
 .idea/
 *.swp
+
+# Claude Code session-local state
+.claude/
