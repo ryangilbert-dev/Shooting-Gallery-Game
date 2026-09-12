@@ -142,10 +142,12 @@ public static class RevolverSetup
         so.FindProperty("viewmodelAnchor").objectReferenceValue = viewmodelAnchor;
 
         // The revolver mesh's own baked orientation needed this correction (found by rendering
-        // rotation candidates to PNG and comparing directly - see RevolverPreviewCapture). Setting
-        // a C# field default doesn't retroactively update it once already serialized on this
-        // existing component, so write it explicitly here too.
-        var orientationCorrection = new Vector3(-90f, 0f, 0f);
+        // rotation candidates to PNG and comparing directly - see RevolverPreviewCapture): base
+        // profile fix, then a further 90-degree roll (composed via quaternion multiplication, not
+        // simple Euler addition) to point the barrel down instead of sideways. Setting a C# field
+        // default doesn't retroactively update it once already serialized on this existing
+        // component, so write it explicitly here too.
+        var orientationCorrection = new Vector3(0f, 270f, 90f);
         so.FindProperty("revolverLocalEulerOffset").vector3Value = orientationCorrection;
         so.FindProperty("viewmodelLocalEulerOffset").vector3Value = orientationCorrection;
         so.ApplyModifiedPropertiesWithoutUndo();

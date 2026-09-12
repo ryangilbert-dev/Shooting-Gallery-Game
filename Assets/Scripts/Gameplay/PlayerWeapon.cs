@@ -30,9 +30,13 @@ namespace ShootingGallery.Gameplay
         // PNG diagnostic: a wildly non-uniform scale we already correct for in RevolverSetup, and
         // a rotation that put its "flat" resting plane in world XZ instead of facing the camera -
         // confirmed by rendering the mesh from several candidate rotations and comparing images
-        // directly rather than guessing blind). Euler(-90, 0, 0) is the base correction that shows
-        // it as a properly recognizable, correctly-proportioned revolver in profile.
-        private static readonly Vector3 RevolverOrientationCorrection = new Vector3(-90f, 0f, 0f);
+        // directly rather than guessing blind). Euler(-90, 0, 0) alone shows a properly
+        // recognizable, correctly-proportioned revolver, but in profile with the barrel pointing
+        // sideways; an additional 90-degree roll brings the barrel to point straight down instead.
+        // That roll doesn't reduce to simply adding 90 to one axis (composed rotations aren't
+        // additive per-Euler-axis - confirmed the hard way), so this is the precomputed Euler
+        // equivalent of Quaternion.Euler(0, 0, 90) * Quaternion.Euler(-90, 0, 0).
+        private static readonly Vector3 RevolverOrientationCorrection = new Vector3(0f, 270f, 90f);
 
         [Header("Third-person hand attachment (what other players see)")]
         [SerializeField] private Vector3 revolverLocalPositionOffset = Vector3.zero;
