@@ -327,7 +327,7 @@ public static class ProjectScaffolder
         doorTriggerGO.AddComponent<GalleryEntryTrigger>();
 
         GameObject matchManagerGO = new GameObject("MatchManager");
-        matchManagerGO.AddComponent<NetworkObject>();
+        AssignUniqueGlobalObjectIdHash(matchManagerGO.AddComponent<NetworkObject>());
         var matchManager = matchManagerGO.AddComponent<MatchManager>();
         var so = new SerializedObject(matchManager);
         so.FindProperty("playerASpawnPoint").objectReferenceValue = spawnA;
@@ -464,12 +464,39 @@ public static class ProjectScaffolder
         Renderer targetRenderer = target.GetComponent<Renderer>();
         targetRenderer.sharedMaterial = defaultMat;
 
-        target.AddComponent<NetworkObject>();
+        NetworkObject networkObject = target.AddComponent<NetworkObject>();
+        AssignUniqueGlobalObjectIdHash(networkObject);
+
         var controller = target.AddComponent<TargetController>();
         var so = new SerializedObject(controller);
         so.FindProperty("targetRenderer").objectReferenceValue = targetRenderer;
         so.FindProperty("defaultMaterial").objectReferenceValue = defaultMat;
         so.FindProperty("hitMaterial").objectReferenceValue = hitMat;
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // Simple per-scaffold-run counter (never 0, which NGO treats as "unassigned") - see
+    // AssignUniqueGlobalObjectIdHash for why this is needed at all.
+    private static uint nextGlobalObjectIdHash = 1;
+
+    /// <summary>
+    /// NetworkObjects added via editor script don't reliably get their internal
+    /// GlobalObjectIdHash assigned before the scene saves - that normally happens through NGO's
+    /// own OnValidate, which is GUI-triggered and can be skipped entirely in this kind of
+    /// scripted/batch workflow. Multiple scene-placed NetworkObjects left at the default hash of
+    /// 0 collide and crash NGO's scene-object registration the moment a second one loads
+    /// (confirmed via a runtime exception: "already contains the same GlobalObjectIdHash value 0").
+    /// First attempt used GlobalObjectId.GetGlobalObjectIdSlow() hoping it'd already be unique per
+    /// object - it isn't, for objects that haven't been serialized to disk yet: brand new,
+    /// unsaved GameObjects don't have a real per-object file ID assigned, so every one of them
+    /// returned the exact same placeholder value (confirmed: all 7 objects got identical hash
+    /// 2930359547). A plain incrementing counter is simple and actually guarantees uniqueness
+    /// within this scaffold run, which is all that's required.
+    /// </summary>
+    private static void AssignUniqueGlobalObjectIdHash(NetworkObject networkObject)
+    {
+        var so = new SerializedObject(networkObject);
+        so.FindProperty("GlobalObjectIdHash").uintValue = nextGlobalObjectIdHash++;
         so.ApplyModifiedPropertiesWithoutUndo();
     }
 
