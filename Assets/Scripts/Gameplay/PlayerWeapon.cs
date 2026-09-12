@@ -64,13 +64,22 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private Vector3 upperArmRaiseEuler = Vector3.zero;
         [SerializeField] private Vector3 forearmRaiseEuler = Vector3.zero;
 
-        [Header("Shot feedback - arcade-style recoil kick + tracer line")]
+        [Header("Shot feedback - arcade-style recoil kick + tracer")]
         [SerializeField] private float recoilKickDistance = 0.06f;
         [SerializeField] private float recoilKickPitch = 14f;
         [SerializeField] private float recoilRecoverySpeed = 12f;
         [SerializeField] private Color tracerColor = Color.red;
-        [SerializeField] private float tracerWidth = 0.03f;
+        [SerializeField] private float tracerWidth = 0.05f;
         [SerializeField] private float tracerDuration = 0.08f;
+
+        // Where the tracer visually starts, relative to ViewmodelAnchor's own (unrotated,
+        // camera-aligned) local space - NOT the revolver mesh's own rotated local space, same
+        // reasoning as recoil: this way "a bit forward and off to the side" always means what it
+        // looks like regardless of the mesh's own baked orientation correction. There's no
+        // modeled muzzle bone on the FBX to read this from automatically, so it's an approximate
+        // guess (roughly the barrel tip, a bit right/down/forward of the anchor pivot); tune live
+        // in Play mode the same way as the other offsets above.
+        [SerializeField] private Vector3 viewmodelMuzzleOffset = new Vector3(0.05f, -0.03f, 0.35f);
 
         public readonly NetworkVariable<bool> IsReadied = new NetworkVariable<bool>(
             false,
@@ -199,7 +208,9 @@ namespace ShootingGallery.Gameplay
             // Cast from the owner's own camera - immediate, local feedback. The actual hit only
             // takes effect once the server applies it (see RequestHitTargetServerRpc), so a wall
             // or another object in the way correctly blocks the shot rather than needing a
-            // separate occlusion check.
+            // separate occlusion check. This deliberately stays camera-centered (not from the
+            // barrel) so aiming matches what's under the crosshair - only the tracer's visual
+            // start point moves to the gun below.
             Vector3 origin = playerCamera.transform.position;
             Vector3 direction = playerCamera.transform.forward;
             Vector3 tracerEndPoint = origin + direction * fireRange;
@@ -215,24 +226,43 @@ namespace ShootingGallery.Gameplay
                 }
             }
 
-            // Start a little in front of the camera rather than exactly at the lens, so the
-            // tracer doesn't appear to originate from inside the near clip plane.
-            SpawnTracer(origin + direction * 0.3f, tracerEndPoint);
+            // Tracer starts at the gun's own barrel rather than the camera, so it visibly comes
+            // from the revolver instead of appearing to shoot out of the middle of the screen.
+            // Falls back to the old camera-forward start point if the viewmodel isn't set up.
+            Vector3 tracerStartPoint = viewmodelAnchor != null
+                ? viewmodelAnchor.TransformPoint(viewmodelMuzzleOffset)
+                : origin + direction * 0.3f;
+            SpawnTracer(tracerStartPoint, tracerEndPoint);
         }
 
         private void SpawnTracer(Vector3 start, Vector3 end)
         {
-            var tracerGO = new GameObject("Tracer");
-            var lineRenderer = tracerGO.AddComponent<LineRenderer>();
-            lineRenderer.useWorldSpace = true;
-            lineRenderer.positionCount = 2;
-            lineRenderer.SetPosition(0, start);
-            lineRenderer.SetPosition(1, end);
-            lineRenderer.startWidth = tracerWidth;
-            lineRenderer.endWidth = tracerWidth;
-            lineRenderer.material = GetTracerMaterial();
-            lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            lineRenderer.receiveShadows = false;
+            // A thin cylinder rather than a LineRenderer - a LineRenderer's line only has real
+            // thickness when viewed roughly side-on (it's still just a camera-facing quad), so a
+            // shot going nearly straight down the barrel toward the camera all but disappeared.
+            // A cylinder is an actual 3D mesh, so it reads as a solid bolt of light from any angle.
+            GameObject tracerGO = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            tracerGO.name = "Tracer";
+
+            // The primitive comes with a CapsuleCollider - purely cosmetic and fired-and-forgotten,
+            // so it should never physically interact with anything (or get hit by our own raycast).
+            Destroy(tracerGO.GetComponent<Collider>());
+
+            Vector3 midpoint = (start + end) * 0.5f;
+            float length = Vector3.Distance(start, end);
+            tracerGO.transform.position = midpoint;
+            // The built-in cylinder mesh's height runs along its local Y axis, so align Y to the
+            // shot direction and let X/Z stay as thin as tracerWidth wants them.
+            tracerGO.transform.rotation = Quaternion.FromToRotation(Vector3.up, end - start);
+            // Default cylinder height is 2 units (radius 0.5), so scale.y = length / 2 gives the
+            // actual desired length; X/Z scale is the tracer's diameter.
+            tracerGO.transform.localScale = new Vector3(tracerWidth, length * 0.5f, tracerWidth);
+
+            var renderer = tracerGO.GetComponent<MeshRenderer>();
+            renderer.material = GetTracerMaterial();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
             Destroy(tracerGO, tracerDuration);
         }
 

@@ -18,6 +18,8 @@ Assets/Prefabs/Networking/PlayerPrefab.prefab
    - `Revolver Local Position/Euler Offset` — third-person, on your character's hand (what other players see)
    - `Viewmodel Local Position/Euler Offset` — first-person, on your own camera (what you see)
    - `Upper Arm/Forearm Raise Euler` — currently unused (zeroed out)
+   - `Viewmodel Muzzle Offset` — where the red tracer visually starts (an approximate barrel-tip
+     guess, since the gun mesh has no modeled muzzle point); tune live the same way
 
 **To tune it live while playing** (both offset pairs update every frame, so this works):
 1. Press Play, get into the Gallery, press **E** to ready the revolver.
