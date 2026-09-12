@@ -33,7 +33,11 @@ namespace ShootingGallery.Gameplay
         [Header("First-person viewmodel (owner-only, camera-attached)")]
         [SerializeField] private Transform viewmodelAnchor;
         [SerializeField] private Vector3 viewmodelLocalPositionOffset = Vector3.zero;
-        [SerializeField] private Vector3 viewmodelLocalEulerOffset = Vector3.zero;
+        // Screenshot showed the model viewed almost straight down its own barrel/cylinder axis
+        // (foreshortened to a flat-looking blob) instead of in profile - a starting guess to swing
+        // it side-on, per "rotated 90 twice" - but reapplied every frame (see Update), so nudge
+        // this live in the Inspector while readied in Play mode until it actually looks right.
+        [SerializeField] private Vector3 viewmodelLocalEulerOffset = new Vector3(0f, 90f, 90f);
 
         [Header("Arm raise pose when readied (rough guess - tune live in Play mode)")]
         [SerializeField] private string upperArmBoneName = "CC_Base_R_Upperarm";
@@ -79,6 +83,16 @@ namespace ShootingGallery.Gameplay
             // pose everyone needs to see, and reapplying every frame is what makes the Inspector
             // fields tunable live during Play mode.
             ApplyArmPose();
+
+            // Same reasoning as the arm pose: reapplied every frame (not just when the viewmodel
+            // is first spawned) so viewmodelLocalPositionOffset/viewmodelLocalEulerOffset are
+            // tunable live in the Inspector while readied, instead of needing another guess-build-
+            // screenshot round trip.
+            if (spawnedViewmodel != null)
+            {
+                spawnedViewmodel.transform.localPosition = viewmodelLocalPositionOffset;
+                spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset);
+            }
 
             if (!IsOwner || Keyboard.current == null)
             {
