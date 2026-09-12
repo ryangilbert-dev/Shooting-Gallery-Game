@@ -16,9 +16,11 @@ public static class RevolverPreviewCapture
 
     private static readonly Quaternion Base = Quaternion.Euler(-90f, 0f, 0f);
 
+    private static readonly Quaternion HoldingPose = Quaternion.Euler(0f, 0f, -90f) * Base;
+
     private static readonly (string label, Quaternion rotation)[] Candidates =
     {
-        ("current", Quaternion.Euler(0f, 0f, -90f) * Base),
+        ("current", Quaternion.Euler(0f, -45f, 0f) * HoldingPose),
     };
 
     [MenuItem("Tools/Shooting Gallery/Capture Revolver Preview")]

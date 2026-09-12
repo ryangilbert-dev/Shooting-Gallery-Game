@@ -436,10 +436,10 @@ MonoBehaviour:
   revolverPrefab: {fileID: 2450527637986887643, guid: 8134158db50e0ee45ba0290cd710f66b, type: 3}
   handBoneName: CC_Base_R_Hand
   revolverLocalPositionOffset: {x: 0, y: 0, z: 0}
-  revolverLocalEulerOffset: {x: 0, y: 90, z: 270}
+  revolverLocalEulerOffset: {x: 0, y: 45, z: 270}
   viewmodelAnchor: {fileID: 1447612008425451576}
   viewmodelLocalPositionOffset: {x: 0, y: 0, z: 0}
-  viewmodelLocalEulerOffset: {x: 0, y: 90, z: 270}
+  viewmodelLocalEulerOffset: {x: 0, y: 45, z: 270}
   upperArmBoneName: CC_Base_R_Upperarm
   forearmBoneName: CC_Base_R_Forearm
   upperArmRaiseEuler: {x: 0, y: 0, z: 0}
