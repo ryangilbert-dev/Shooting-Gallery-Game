@@ -10,6 +10,13 @@ namespace ShootingGallery.Gameplay
     /// spawn positioning. Gallery scoring (M2), the wall trigger (M3), the duel exchange loop
     /// (M4), and round/match progression (M5) are added on top of this same script rather than
     /// as separate managers, per the approved architecture plan.
+    ///
+    /// This manager never moves a player's transform directly - PlayerPrefab's NetworkTransform
+    /// is Owner-authoritative (for responsive movement), so a server-side position write can
+    /// silently lose to the owner's own authority, or simply happen before that player's object
+    /// has finished spawning at all. Instead it exposes spawn-point lookups and increments a
+    /// per-lane "go there now" token; each player watches for its own lane's token and moves
+    /// itself (see PlayerController), which is both timing-safe and authority-consistent.
     /// </summary>
     public class MatchManager : NetworkBehaviour
     {
@@ -37,6 +44,15 @@ namespace ShootingGallery.Gameplay
             ulong.MaxValue,
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
+
+        // Incremented (server-only) whenever that lane's player should move to their gallery
+        // spawn point right now. A plain counter rather than a bool so it fires every time (a
+        // bool that's already true wouldn't trigger OnValueChanged if set true again).
+        public readonly NetworkVariable<int> PlayerAGalleryEntryToken = new NetworkVariable<int>(
+            0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+        public readonly NetworkVariable<int> PlayerBGalleryEntryToken = new NetworkVariable<int>(
+            0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
         // Server-only bookkeeping - no client needs to read these directly, they only ever
         // observe the CurrentPhase change that results from both being true.
@@ -87,17 +103,13 @@ namespace ShootingGallery.Gameplay
             {
                 PlayerBClientId.Value = clientId;
             }
-            else
-            {
-                // Third-plus connection: not supported for 1v1 v1, leave unassigned.
-                return;
-            }
-
-            PositionPlayerIfSpawned(clientId);
 
             // Both connected just means both are standing in the bar together now - the match
             // itself doesn't start (GalleryPhase) until they both walk through the gallery
-            // doorway, handled by NotifyPlayerEnteredGallery.
+            // doorway, handled by NotifyPlayerEnteredGallery. Bar positioning itself is handled
+            // by each player positioning itself once it learns its own lane assignment (see
+            // PlayerController) - not attempted here, since the player object may not exist yet
+            // at the exact moment this callback fires.
         }
 
         private void HandleClientDisconnected(ulong clientId)
@@ -117,27 +129,11 @@ namespace ShootingGallery.Gameplay
             CurrentPhase.Value = GamePhase.WaitingForPlayers;
         }
 
-        private void PositionPlayerIfSpawned(ulong clientId)
-        {
-            if (!NetworkManager.ConnectedClients.TryGetValue(clientId, out NetworkClient client) ||
-                client.PlayerObject == null)
-            {
-                return;
-            }
-
-            Transform spawnPoint = clientId == PlayerAClientId.Value ? barSpawnPointA : barSpawnPointB;
-            if (spawnPoint == null)
-            {
-                return;
-            }
-
-            client.PlayerObject.transform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
-        }
-
         /// <summary>
         /// Called (server-only) by GalleryEntryTrigger when a connected player's collider passes
-        /// through the doorway between the bar and the gallery. Teleports them to their assigned
-        /// lane; once both players have entered, starts the match (GalleryPhase).
+        /// through the doorway between the bar and the gallery. Signals that player to teleport
+        /// itself to its assigned lane; once both players have entered, starts the match
+        /// (GalleryPhase).
         /// </summary>
         public void NotifyPlayerEnteredGallery(ulong clientId)
         {
@@ -155,20 +151,12 @@ namespace ShootingGallery.Gameplay
             if (lane == LaneSide.A)
             {
                 playerAEnteredGallery = true;
+                PlayerAGalleryEntryToken.Value++;
             }
             else
             {
                 playerBEnteredGallery = true;
-            }
-
-            if (NetworkManager.ConnectedClients.TryGetValue(clientId, out NetworkClient client) &&
-                client.PlayerObject != null)
-            {
-                Transform spawnPoint = lane == LaneSide.A ? playerASpawnPoint : playerBSpawnPoint;
-                if (spawnPoint != null)
-                {
-                    client.PlayerObject.transform.SetPositionAndRotation(spawnPoint.position, spawnPoint.rotation);
-                }
+                PlayerBGalleryEntryToken.Value++;
             }
 
             if (playerAEnteredGallery && playerBEnteredGallery)
@@ -190,6 +178,26 @@ namespace ShootingGallery.Gameplay
             }
 
             return LaneSide.None;
+        }
+
+        /// <summary>Where this client should stand in the bar (lobby) on connect. Null if not
+        /// yet assigned a lane.</summary>
+        public Transform GetBarSpawnPointForClient(ulong clientId)
+        {
+            LaneSide lane = GetLaneForClient(clientId);
+            if (lane == LaneSide.A) return barSpawnPointA;
+            if (lane == LaneSide.B) return barSpawnPointB;
+            return null;
+        }
+
+        /// <summary>Where this client should stand in their gallery lane. Null if not yet
+        /// assigned a lane.</summary>
+        public Transform GetGallerySpawnPointForClient(ulong clientId)
+        {
+            LaneSide lane = GetLaneForClient(clientId);
+            if (lane == LaneSide.A) return playerASpawnPoint;
+            if (lane == LaneSide.B) return playerBSpawnPoint;
+            return null;
         }
     }
 }
