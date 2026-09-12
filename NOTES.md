@@ -60,6 +60,14 @@ background) that fills by 10% per landed shot. At 100% it resets to empty and dr
 - **Something breaks right after connecting**: check the **Console window** (Window > General >
   Console) for red error text the moment it happens — this has been the fastest way to find the
   real cause every time so far, way faster than guessing from symptoms alone.
+- **A cross-object reference (like `MatchManager`'s `Divider Wall` field) reads back null at
+  runtime even though it's clearly set correctly in the scene/prefab file**: has happened twice
+  now, both times traced to that scene or prefab having last been rebuilt through a Unity batch
+  run against the project's 8.3 short path (`SHOOTI~1`) instead of its real path — some editor
+  cache gets keyed to the wrong path and silently corrupts references for anything more complex
+  than a plain field. Fix is to just rebuild that scene/prefab again (the relevant
+  `Tools > Shooting Gallery` menu item) — this only happens from scripted/batch edits, never from
+  using the Editor normally, so it's not something you'll hit from your own testing.
 
 ## Useful custom menu items
 
@@ -70,6 +78,9 @@ Under **Tools > Shooting Gallery** in the Editor menu bar:
   Character Scale** — one-shot patches for `PlayerPrefab`; safe to re-run.
 - **Capture Revolver Preview** — renders the revolver prefab to a PNG for a quick visual check
   without needing to test in-game (used heavily to fix its orientation).
+- **Diagnostics > Run Wall Drop Diagnostic** — hosts a session and directly forces 10 hits to
+  check the tracker-bar-to-wall-drop wiring end to end, without needing to actually aim/shoot or
+  a second player. Logs PASS/FAIL to the Console and exits Play mode on its own when done.
 
 Most of the project is actually built/maintained through these scripted tools rather than
 hand-edited in the Editor, so re-running one after a related code change is often the way
