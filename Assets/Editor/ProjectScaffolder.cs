@@ -308,6 +308,12 @@ public static class ProjectScaffolder
         wall.transform.localScale = new Vector3(0.5f, 4.5f, 16f);
         wall.GetComponent<Renderer>().sharedMaterial = dividerWallMat;
 
+        // Networked so both clients see the same drop/raise animation at the same time - see
+        // WallController. Its collider (added automatically by CreatePrimitive) moves down with
+        // it, so a dropped wall stops blocking both sightlines and shots without any extra work.
+        AssignUniqueGlobalObjectIdHash(wall.AddComponent<NetworkObject>());
+        var wallController = wall.AddComponent<WallController>();
+
         // --- Bar room: player spawn / lobby, door on its west side to meet the gallery's ---
         GameObject barRoom = new GameObject("BarRoom");
         Vector3 barCenter = new Vector3(22f, 0f, 0f);
@@ -334,6 +340,7 @@ public static class ProjectScaffolder
         so.FindProperty("playerBSpawnPoint").objectReferenceValue = spawnB;
         so.FindProperty("barSpawnPointA").objectReferenceValue = barSpawnA;
         so.FindProperty("barSpawnPointB").objectReferenceValue = barSpawnB;
+        so.FindProperty("dividerWall").objectReferenceValue = wallController;
         so.ApplyModifiedPropertiesWithoutUndo();
 
         EditorSceneManager.SaveScene(scene, ArenaScenePath);

@@ -173,6 +173,7 @@ GameObject:
   - component: {fileID: 2217646062628754983}
   - component: {fileID: 5466671227527291175}
   - component: {fileID: 5498204607071548275}
+  - component: {fileID: 8085598651492635571}
   m_Layer: 0
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -439,8 +440,32 @@ MonoBehaviour:
   revolverLocalEulerOffset: {x: 0, y: 45, z: 270}
   viewmodelAnchor: {fileID: 1447612008425451576}
   viewmodelLocalPositionOffset: {x: 0, y: 0, z: 0}
-  viewmodelLocalEulerOffset: {x: -90, y: 180, z: 270}
+  viewmodelLocalEulerOffset: {x: 0, y: 45, z: 270}
   upperArmBoneName: CC_Base_R_Upperarm
   forearmBoneName: CC_Base_R_Forearm
   upperArmRaiseEuler: {x: 0, y: 0, z: 0}
   forearmRaiseEuler: {x: 0, y: 0, z: 0}
+  recoilKickDistance: 0.06
+  recoilKickPitch: 14
+  recoilRecoverySpeed: 12
+  tracerColor: {r: 1, g: 0, b: 0, a: 1}
+  tracerWidth: 0.05
+  tracerDuration: 0.08
+  viewmodelMuzzleOffset: {x: 0.05, y: -0.03, z: 0.35}
+--- !u!114 &8085598651492635571
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1230b6a87564e946b67209640d245c3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.UI.HitTrackerHUD
+  ShowTopMostFoldoutHeaderGroup: 1
+  barBackgroundColor: {r: 0, g: 0, b: 0, a: 0.5}
+  barFillColor: {r: 0.85, g: 0.65, b: 0.1, a: 1}
+  barSize: {x: 320, y: 26}
+  barBottomMargin: 40

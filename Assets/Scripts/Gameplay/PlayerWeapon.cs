@@ -283,6 +283,11 @@ namespace ShootingGallery.Gameplay
             if (targetRef.TryGet(out NetworkObject targetObject) && targetObject.TryGetComponent(out TargetController target))
             {
                 target.ServerMarkHit();
+
+                // OwnerClientId is safe to trust here - this ServerRpc only ever runs on the
+                // server, and its sender is always this PlayerWeapon's own owning client (the
+                // shooter), never anyone spoofing another player's hit.
+                MatchManager.Instance?.RegisterTargetHit(OwnerClientId);
             }
         }
 

@@ -35,6 +35,20 @@ Write down the numbers that work, stop Play, reopen the prefab, and type them in
 camera) directly in the Scene view — it re-applies from `Player Weapon`'s fields every
 frame, so any manual tweak there snaps back almost instantly.
 
+## Hit tracker bar & wall drop
+
+Each lane has its own hit-tracker bar (bottom-center of your screen, gold fill on a dark
+background) that fills by 10% per landed shot. At 100% it resets to empty and drops the
+`DividerWall` between the two galleries for a few seconds before it rises back up.
+
+- Tuning knobs live on **`MatchManager`** (the scene object in `Arena.unity`, not a prefab):
+  `Hits Per Bar Fill` (default 10) and `Wall Drop Duration` (default 5 seconds).
+- The wall's own drop distance/speed are tunable on **`DividerWall`**'s `Wall Controller`
+  component.
+- The bar itself is owner-only and built entirely from code at runtime (`HitTrackerHUD.cs`) -
+  there's no Canvas/prefab UI to go find; it just appears once you've readied up and joined a
+  lane.
+
 ## Common gotchas
 
 - **"No cameras rendering" warning on Play**: normal if you're in `MainMenu` before hosting —
@@ -70,4 +84,7 @@ See git log for the detailed history. Rough milestone state as of the last updat
 - ✅ Bar + Gallery rooms, colored, doorway sized right
 - ✅ Revolver draw/holster (E), 6-shot ammo (click to fire, R to reload), correctly posed
 - ✅ Six practice targets, server-validated hits, turn green and auto-reset
-- ⬜ Wall-drop mechanic (M3) and the duel aim/dodge exchange (M4) not started yet
+- ✅ Arcade shot feedback: recoil kick + red cylinder tracer from the barrel
+- ✅ Hit tracker bar per lane, fills 10% per hit, drops the divider wall for 5s at 100%
+- ⬜ The duel aim/dodge exchange itself (M4) not started yet - the wall currently just drops and
+  rises with nothing happening while it's down

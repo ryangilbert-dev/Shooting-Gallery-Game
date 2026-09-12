@@ -30,6 +30,15 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private Transform barSpawnPointA;
         [SerializeField] private Transform barSpawnPointB;
 
+        [Header("Wall drop mechanic")]
+        [SerializeField] private WallController dividerWall;
+        [SerializeField] private int hitsPerBarFill = 10;
+        [SerializeField] private float wallDropDuration = 5f;
+
+        /// <summary>How many landed shots fill a lane's hit-tracker bar - HitTrackerHUD reads
+        /// this to turn a raw hit count into a fill fraction.</summary>
+        public int HitsPerBarFill => hitsPerBarFill;
+
         public readonly NetworkVariable<GamePhase> CurrentPhase = new NetworkVariable<GamePhase>(
             GamePhase.WaitingForPlayers,
             NetworkVariableReadPermission.Everyone,
@@ -52,6 +61,16 @@ namespace ShootingGallery.Gameplay
             0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
         public readonly NetworkVariable<int> PlayerBGalleryEntryToken = new NetworkVariable<int>(
+            0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+        // Each lane's own hit-tracker bar - 0 to hitsPerBarFill, read by that player's
+        // HitTrackerHUD to drive its fill amount. Resets to 0 the moment it fills (see
+        // RegisterTargetHit), which is also the signal the bar was ever actually full - no
+        // separate "just filled" event needed since the wall drop happens in that same instant.
+        public readonly NetworkVariable<int> PlayerAHitCount = new NetworkVariable<int>(
+            0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+
+        public readonly NetworkVariable<int> PlayerBHitCount = new NetworkVariable<int>(
             0, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
         // Server-only bookkeeping - no client needs to read these directly, they only ever
@@ -198,6 +217,35 @@ namespace ShootingGallery.Gameplay
             if (lane == LaneSide.A) return playerASpawnPoint;
             if (lane == LaneSide.B) return playerBSpawnPoint;
             return null;
+        }
+
+        /// <summary>Server-only: called by PlayerWeapon whenever a shot lands on a target. Bumps
+        /// that shooter's lane's hit-tracker bar; once it reaches hitsPerBarFill, resets it back
+        /// to 0 and drops the divider wall for wallDropDuration seconds.</summary>
+        public void RegisterTargetHit(ulong shooterClientId)
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+
+            LaneSide lane = GetLaneForClient(shooterClientId);
+            if (lane == LaneSide.None)
+            {
+                return;
+            }
+
+            NetworkVariable<int> hitCount = lane == LaneSide.A ? PlayerAHitCount : PlayerBHitCount;
+            hitCount.Value++;
+
+            if (hitCount.Value >= hitsPerBarFill)
+            {
+                hitCount.Value = 0;
+                if (dividerWall != null)
+                {
+                    dividerWall.ServerDropForSeconds(wallDropDuration);
+                }
+            }
         }
     }
 }
