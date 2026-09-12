@@ -122,8 +122,18 @@ public static class RevolverSetup
         {
             var anchorGO = new GameObject("ViewmodelAnchor");
             anchorGO.transform.SetParent(cameraTransform, false);
-            anchorGO.transform.localPosition = new Vector3(0.2f, -0.2f, 0.4f);
             viewmodelAnchor = anchorGO.transform;
+        }
+
+        if (viewmodelAnchor != null)
+        {
+            // 0.4 was only ~0.1 units past the camera's 0.3-unit near clip plane - part of the
+            // ~0.3-unit-long revolver mesh was falling closer than that and getting clipped away
+            // entirely, which looked like disconnected/scrambled pieces (confirmed via
+            // screenshot). Pushed out to comfortably clear it regardless of where the model's own
+            // pivot sits within its bounds. Always reapplied (not just on first creation) so
+            // re-running this tool actually fixes an existing, already-wrong anchor.
+            viewmodelAnchor.localPosition = new Vector3(0.2f, -0.2f, 0.6f);
         }
 
         var so = new SerializedObject(weapon);
