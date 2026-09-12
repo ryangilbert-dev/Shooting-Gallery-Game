@@ -115,9 +115,27 @@ public static class ProjectScaffolder
         EditorSceneManager.SaveScene(scene, BootstrapScenePath);
     }
 
+    [MenuItem("Tools/Shooting Gallery/Rebuild Main Menu Scene Only")]
+    public static void RebuildMainMenuOnly()
+    {
+        BuildMainMenuScene();
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+        Debug.Log("[ProjectScaffolder] Main menu scene rebuilt (Bootstrap/Arena/PlayerPrefab untouched).");
+    }
+
     private static void BuildMainMenuScene()
     {
         Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+        // Neither this scene nor Bootstrap has a camera otherwise - the only one in the whole
+        // game lives on PlayerPrefab, and that's disabled until a player actually spawns. Without
+        // this, pressing Play just shows a "no cameras rendering" warning over blank menu UI.
+        GameObject menuCameraGO = new GameObject("MenuCamera");
+        Camera menuCamera = menuCameraGO.AddComponent<Camera>();
+        menuCamera.clearFlags = CameraClearFlags.SolidColor;
+        menuCamera.backgroundColor = new Color(0.15f, 0.15f, 0.17f);
+        menuCameraGO.AddComponent<AudioListener>();
 
         GameObject esGO = new GameObject("EventSystem");
         esGO.AddComponent<EventSystem>();
