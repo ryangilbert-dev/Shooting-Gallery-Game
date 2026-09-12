@@ -26,18 +26,25 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private GameObject revolverPrefab;
         [SerializeField] private string handBoneName = "CC_Base_R_Hand";
 
+        // The Revolver FBX's own root carries an odd baked transform (measured via a render-to-
+        // PNG diagnostic: a wildly non-uniform scale we already correct for in RevolverSetup, and
+        // a rotation that put its "flat" resting plane in world XZ instead of facing the camera -
+        // confirmed by rendering the mesh from several candidate rotations and comparing images
+        // directly rather than guessing blind). Euler(-90, 0, 0) is the base correction that shows
+        // it as a properly recognizable, correctly-proportioned revolver in profile.
+        private static readonly Vector3 RevolverOrientationCorrection = new Vector3(-90f, 0f, 0f);
+
         [Header("Third-person hand attachment (what other players see)")]
         [SerializeField] private Vector3 revolverLocalPositionOffset = Vector3.zero;
-        [SerializeField] private Vector3 revolverLocalEulerOffset = Vector3.zero;
+        [SerializeField] private Vector3 revolverLocalEulerOffset = RevolverOrientationCorrection;
 
         [Header("First-person viewmodel (owner-only, camera-attached)")]
         [SerializeField] private Transform viewmodelAnchor;
         [SerializeField] private Vector3 viewmodelLocalPositionOffset = Vector3.zero;
-        // Screenshot showed the model viewed almost straight down its own barrel/cylinder axis
-        // (foreshortened to a flat-looking blob) instead of in profile - a starting guess to swing
-        // it side-on, per "rotated 90 twice" - but reapplied every frame (see Update), so nudge
-        // this live in the Inspector while readied in Play mode until it actually looks right.
-        [SerializeField] private Vector3 viewmodelLocalEulerOffset = new Vector3(0f, 90f, 90f);
+        // Reapplied every frame (see Update), so nudge this live in the Inspector while readied in
+        // Play mode if you want a different angle than plain profile (e.g. a bit of yaw to angle
+        // the barrel more toward "forward" for a classic FPS look).
+        [SerializeField] private Vector3 viewmodelLocalEulerOffset = RevolverOrientationCorrection;
 
         [Header("Arm raise pose when readied (rough guess - tune live in Play mode)")]
         [SerializeField] private string upperArmBoneName = "CC_Base_R_Upperarm";

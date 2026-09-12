@@ -140,6 +140,14 @@ public static class RevolverSetup
         so.FindProperty("revolverPrefab").objectReferenceValue = revolverPrefab;
         so.FindProperty("playerCamera").objectReferenceValue = cameraTransform != null ? cameraTransform.GetComponent<Camera>() : null;
         so.FindProperty("viewmodelAnchor").objectReferenceValue = viewmodelAnchor;
+
+        // The revolver mesh's own baked orientation needed this correction (found by rendering
+        // rotation candidates to PNG and comparing directly - see RevolverPreviewCapture). Setting
+        // a C# field default doesn't retroactively update it once already serialized on this
+        // existing component, so write it explicitly here too.
+        var orientationCorrection = new Vector3(-90f, 0f, 0f);
+        so.FindProperty("revolverLocalEulerOffset").vector3Value = orientationCorrection;
+        so.FindProperty("viewmodelLocalEulerOffset").vector3Value = orientationCorrection;
         so.ApplyModifiedPropertiesWithoutUndo();
 
         PrefabUtility.SaveAsPrefabAsset(instance, PlayerPrefabPath);
