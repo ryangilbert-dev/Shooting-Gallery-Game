@@ -116,8 +116,20 @@ public static class RevolverSetup
             weapon = instance.AddComponent<PlayerWeapon>();
         }
 
+        Transform cameraTransform = instance.transform.Find("PlayerCamera");
+        Transform viewmodelAnchor = cameraTransform != null ? cameraTransform.Find("ViewmodelAnchor") : null;
+        if (cameraTransform != null && viewmodelAnchor == null)
+        {
+            var anchorGO = new GameObject("ViewmodelAnchor");
+            anchorGO.transform.SetParent(cameraTransform, false);
+            anchorGO.transform.localPosition = new Vector3(0.2f, -0.2f, 0.4f);
+            viewmodelAnchor = anchorGO.transform;
+        }
+
         var so = new SerializedObject(weapon);
         so.FindProperty("revolverPrefab").objectReferenceValue = revolverPrefab;
+        so.FindProperty("playerCamera").objectReferenceValue = cameraTransform != null ? cameraTransform.GetComponent<Camera>() : null;
+        so.FindProperty("viewmodelAnchor").objectReferenceValue = viewmodelAnchor;
         so.ApplyModifiedPropertiesWithoutUndo();
 
         PrefabUtility.SaveAsPrefabAsset(instance, PlayerPrefabPath);

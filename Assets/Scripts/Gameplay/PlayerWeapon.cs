@@ -5,35 +5,43 @@ using UnityEngine.InputSystem;
 namespace ShootingGallery.Gameplay
 {
     /// <summary>
-    /// Owner-driven revolver draw/holster and ammo tracking. E toggles readied/holstered; while
-    /// readied, left click fires (one of six shots) and R reloads instantly. Not server-validated
-    /// yet - matches PlayerMovement's "client-authoritative for now" approach; revisit once this
-    /// needs to be trusted (e.g. actually hitting the other player in a duel).
+    /// Owner-driven revolver draw/holster, ammo tracking, and firing. E toggles readied/holstered;
+    /// while readied, left click fires (one of six shots, raycast-validated against
+    /// TargetController hits via a server RPC) and R reloads instantly. Ready-state/ammo aren't
+    /// server-validated yet - matches PlayerMovement's "client-authoritative for now" approach -
+    /// but the actual hit registration on a target IS server-authoritative, since that's shared
+    /// state every client needs to agree on.
     ///
-    /// While readied, the upper arm/forearm bones are also rotated (procedurally, no animation
-    /// clips involved) to bring the gun up into the owner's own first-person view - the camera is
-    /// fixed at eye height and doesn't otherwise "see" the character's own hand. The raise angles
-    /// below are a rough starting guess: exact rig axis conventions can't be verified without
-    /// eyes on the render, so tune upperArmRaiseEuler/forearmRaiseEuler live in the Inspector
-    /// during Play mode (they reapply continuously, not just on press) until the pose looks right.
+    /// Two separate revolver visuals exist: one parented to the character's hand bone (third
+    /// person - what other players see on your body) and one parented to a point fixed to your
+    /// own camera (first person viewmodel - what only you see, deliberately decoupled from the
+    /// character rig so it doesn't depend on guessing that rig's bone-rotation conventions).
     /// </summary>
     public class PlayerWeapon : NetworkBehaviour
     {
         private const int MaxAmmo = 6;
 
+        [SerializeField] private Camera playerCamera;
+        [SerializeField] private float fireRange = 50f;
         [SerializeField] private GameObject revolverPrefab;
+        [SerializeField] private string handBoneName = "CC_Base_R_Hand";
+
+        [Header("Third-person hand attachment (what other players see)")]
         [SerializeField] private Vector3 revolverLocalPositionOffset = Vector3.zero;
         [SerializeField] private Vector3 revolverLocalEulerOffset = Vector3.zero;
-        [SerializeField] private string handBoneName = "CC_Base_R_Hand";
+
+        [Header("First-person viewmodel (owner-only, camera-attached)")]
+        [SerializeField] private Transform viewmodelAnchor;
+        [SerializeField] private Vector3 viewmodelLocalPositionOffset = Vector3.zero;
+        [SerializeField] private Vector3 viewmodelLocalEulerOffset = Vector3.zero;
 
         [Header("Arm raise pose when readied (rough guess - tune live in Play mode)")]
         [SerializeField] private string upperArmBoneName = "CC_Base_R_Upperarm";
         [SerializeField] private string forearmBoneName = "CC_Base_R_Forearm";
-        // Defaulted to zero (no pose change) rather than guessed - the first blind guess swung
-        // the arm straight into the camera (confirmed via screenshot: an extreme close-up of
-        // mesh interior). Tune these live in the Inspector during Play mode instead: select the
-        // player, find PlayerWeapon, nudge one axis at a time while readied and watching the
-        // Scene view or your own screen, since these reapply every frame.
+        // Defaulted to zero (no pose change) - a first blind guess swung the arm straight into
+        // the camera (confirmed via screenshot). Tune live in the Inspector during Play mode:
+        // these reapply every frame, so nudging one axis at a time while readied and watching the
+        // Scene view (or your own screen) is much faster than another blind guess.
         [SerializeField] private Vector3 upperArmRaiseEuler = Vector3.zero;
         [SerializeField] private Vector3 forearmRaiseEuler = Vector3.zero;
 
@@ -53,6 +61,7 @@ namespace ShootingGallery.Gameplay
         private Quaternion upperArmBindRotation;
         private Quaternion forearmBindRotation;
         private GameObject spawnedRevolver;
+        private GameObject spawnedViewmodel;
 
         public override void OnNetworkSpawn()
         {
@@ -67,8 +76,8 @@ namespace ShootingGallery.Gameplay
         private void Update()
         {
             // Runs for every client, not just the owner - the raised-arm pose is a third-person
-            // pose everyone needs to see, and reapplying every frame (rather than only on the E
-            // press) is what makes the Inspector fields tunable live during Play mode.
+            // pose everyone needs to see, and reapplying every frame is what makes the Inspector
+            // fields tunable live during Play mode.
             ApplyArmPose();
 
             if (!IsOwner || Keyboard.current == null)
@@ -107,6 +116,33 @@ namespace ShootingGallery.Gameplay
 
             CurrentAmmo.Value--;
             Debug.Log($"[PlayerWeapon] Fired - {CurrentAmmo.Value}/{MaxAmmo} shots left.");
+
+            if (playerCamera == null)
+            {
+                return;
+            }
+
+            // Cast from the owner's own camera - immediate, local feedback. The actual hit only
+            // takes effect once the server applies it (see RequestHitTargetServerRpc), so a wall
+            // or another object in the way correctly blocks the shot rather than needing a
+            // separate occlusion check.
+            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, fireRange))
+            {
+                NetworkObject targetNetworkObject = hit.collider.GetComponentInParent<NetworkObject>();
+                if (targetNetworkObject != null && targetNetworkObject.TryGetComponent(out TargetController _))
+                {
+                    RequestHitTargetServerRpc(new NetworkObjectReference(targetNetworkObject));
+                }
+            }
+        }
+
+        [ServerRpc]
+        private void RequestHitTargetServerRpc(NetworkObjectReference targetRef)
+        {
+            if (targetRef.TryGet(out NetworkObject targetObject) && targetObject.TryGetComponent(out TargetController target))
+            {
+                target.ServerMarkHit();
+            }
         }
 
         private void Reload()
@@ -141,6 +177,7 @@ namespace ShootingGallery.Gameplay
         private void HandleReadyChanged(bool previous, bool current)
         {
             RefreshRevolverAttachment();
+            RefreshViewmodel();
         }
 
         private void ApplyArmPose()
@@ -182,8 +219,7 @@ namespace ShootingGallery.Gameplay
             // The hand bone lives inside a character shrunk down by CharacterScaleFix (to ~1/6-1/8
             // its raw size), and Instantiate(prefab, parent) keeps the prefab's own baked local
             // scale - so without this correction the revolver inherits that shrink and comes out
-            // ~6x too big (its 0.3-unit target scale divided by the hand bone's ~0.16 world
-            // scale). Counteract the parent's lossy scale so it renders at its intended size
+            // ~6x too big. Counteract the parent's lossy scale so it renders at its intended size
             // regardless of which character (and therefore which shrink factor) is currently worn.
             Vector3 parentLossyScale = currentHandBone.lossyScale;
             Vector3 prefabScale = revolverPrefab.transform.localScale;
@@ -191,6 +227,28 @@ namespace ShootingGallery.Gameplay
                 prefabScale.x / Mathf.Max(parentLossyScale.x, 0.0001f),
                 prefabScale.y / Mathf.Max(parentLossyScale.y, 0.0001f),
                 prefabScale.z / Mathf.Max(parentLossyScale.z, 0.0001f));
+        }
+
+        private void RefreshViewmodel()
+        {
+            if (spawnedViewmodel != null)
+            {
+                Destroy(spawnedViewmodel);
+                spawnedViewmodel = null;
+            }
+
+            // Owner-only: this exists purely so you can see your own gun. No inherited-scale
+            // correction needed here - the camera/anchor chain is never scaled, unlike the hand
+            // bone above.
+            if (!IsOwner || !IsReadied.Value || revolverPrefab == null || viewmodelAnchor == null)
+            {
+                return;
+            }
+
+            spawnedViewmodel = Instantiate(revolverPrefab, viewmodelAnchor);
+            spawnedViewmodel.transform.localPosition = viewmodelLocalPositionOffset;
+            spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset);
+            spawnedViewmodel.transform.localScale = revolverPrefab.transform.localScale;
         }
 
         private static Transform FindDeepChild(Transform parent, string name)

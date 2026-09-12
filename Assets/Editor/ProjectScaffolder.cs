@@ -270,15 +270,18 @@ public static class ProjectScaffolder
         Transform spawnA = BuildLane("GalleryLaneA", galleryRoom.transform, new Vector3(-10f, 0f, 0f), Vector3.right);
         Transform spawnB = BuildLane("GalleryLaneB", galleryRoom.transform, new Vector3(10f, 0f, 0f), Vector3.left);
 
-        // Simple standing placeholder target for testing aim/fire, ahead of Lane A's spawn point.
-        // Not a full target system yet - no hit detection wired up, just something to shoot at.
-        Material targetMat = CreateColorMaterial(RoomMaterialsFolder + "/PracticeTarget.mat", new Color(0.75f, 0.15f, 0.1f));
-        GameObject target = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-        target.name = "PracticeTarget";
-        target.transform.SetParent(galleryRoom.transform, false);
-        target.transform.position = new Vector3(-5f, 0.75f, -5f);
-        target.transform.localScale = new Vector3(0.6f, 0.75f, 0.6f);
-        target.GetComponent<Renderer>().sharedMaterial = targetMat;
+        // A handful of standing practice targets, three per lane, at varied distances - server-
+        // authoritative hit detection via TargetController (PlayerWeapon raycasts, server
+        // validates and flips each target green on hit, auto-resetting after a couple seconds).
+        Material targetDefaultMat = CreateColorMaterial(RoomMaterialsFolder + "/PracticeTarget.mat", new Color(0.75f, 0.15f, 0.1f));
+        Material targetHitMat = CreateColorMaterial(RoomMaterialsFolder + "/PracticeTargetHit.mat", new Color(0.15f, 0.75f, 0.2f));
+
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(-5f, 0.75f, -5f), targetDefaultMat, targetHitMat);
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(-3f, 0.75f, -2f), targetDefaultMat, targetHitMat);
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(-7f, 0.75f, 2f), targetDefaultMat, targetHitMat);
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(5f, 0.75f, -5f), targetDefaultMat, targetHitMat);
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(3f, 0.75f, -2f), targetDefaultMat, targetHitMat);
+        BuildPracticeTarget(galleryRoom.transform, new Vector3(7f, 0.75f, 2f), targetDefaultMat, targetHitMat);
 
         GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
         wall.name = "DividerWall";
@@ -430,6 +433,26 @@ public static class ProjectScaffolder
         spawn.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
 
         return spawn.transform;
+    }
+
+    private static void BuildPracticeTarget(Transform parent, Vector3 position, Material defaultMat, Material hitMat)
+    {
+        GameObject target = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        target.name = "PracticeTarget";
+        target.transform.SetParent(parent, false);
+        target.transform.position = position;
+        target.transform.localScale = new Vector3(0.6f, 0.75f, 0.6f);
+
+        Renderer targetRenderer = target.GetComponent<Renderer>();
+        targetRenderer.sharedMaterial = defaultMat;
+
+        target.AddComponent<NetworkObject>();
+        var controller = target.AddComponent<TargetController>();
+        var so = new SerializedObject(controller);
+        so.FindProperty("targetRenderer").objectReferenceValue = targetRenderer;
+        so.FindProperty("defaultMaterial").objectReferenceValue = defaultMat;
+        so.FindProperty("hitMaterial").objectReferenceValue = hitMat;
+        so.ApplyModifiedPropertiesWithoutUndo();
     }
 
     private static Transform BuildSpawnPoint(Transform parent, Vector3 worldPosition, Vector3 facing, string name)
