@@ -65,3 +65,6 @@ crashlytics-build.properties
 
 # Claude Code session-local state
 .claude/
+
+# Unity Editor crash-recovery scene backups
+/[Aa]ssets/_Recovery/
