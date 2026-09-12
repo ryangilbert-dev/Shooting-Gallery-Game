@@ -99,14 +99,19 @@ namespace ShootingGallery.Gameplay
             // fields tunable live during Play mode.
             ApplyArmPose();
 
-            // Same reasoning as the arm pose: reapplied every frame (not just when the viewmodel
-            // is first spawned) so viewmodelLocalPositionOffset/viewmodelLocalEulerOffset are
-            // tunable live in the Inspector while readied, instead of needing another guess-build-
-            // screenshot round trip.
+            // Same reasoning as the arm pose: reapplied every frame (not just when spawned) so
+            // both offset pairs are tunable live in the Inspector while readied, instead of
+            // needing another guess-build-screenshot round trip.
             if (spawnedViewmodel != null)
             {
                 spawnedViewmodel.transform.localPosition = viewmodelLocalPositionOffset;
                 spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset);
+            }
+
+            if (spawnedRevolver != null)
+            {
+                spawnedRevolver.transform.localPosition = revolverLocalPositionOffset;
+                spawnedRevolver.transform.localRotation = Quaternion.Euler(revolverLocalEulerOffset);
             }
 
             if (!IsOwner || Keyboard.current == null)
