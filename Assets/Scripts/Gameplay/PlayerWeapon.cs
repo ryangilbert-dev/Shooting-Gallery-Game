@@ -64,6 +64,14 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private Vector3 upperArmRaiseEuler = Vector3.zero;
         [SerializeField] private Vector3 forearmRaiseEuler = Vector3.zero;
 
+        [Header("Shot feedback - arcade-style recoil kick + tracer line")]
+        [SerializeField] private float recoilKickDistance = 0.06f;
+        [SerializeField] private float recoilKickPitch = 14f;
+        [SerializeField] private float recoilRecoverySpeed = 12f;
+        [SerializeField] private Color tracerColor = Color.red;
+        [SerializeField] private float tracerWidth = 0.03f;
+        [SerializeField] private float tracerDuration = 0.08f;
+
         public readonly NetworkVariable<bool> IsReadied = new NetworkVariable<bool>(
             false,
             NetworkVariableReadPermission.Everyone,
@@ -81,6 +89,22 @@ namespace ShootingGallery.Gameplay
         private Quaternion forearmBindRotation;
         private GameObject spawnedRevolver;
         private GameObject spawnedViewmodel;
+        private Vector3 viewmodelAnchorRestPosition;
+        private Quaternion viewmodelAnchorRestRotation;
+        private float recoilAmount;
+        private Material tracerMaterial;
+
+        private void Awake()
+        {
+            // Cache the anchor's authored rest pose (set once by RevolverSetup) before recoil
+            // ever nudges it - recoil is applied as an offset from this, not from whatever the
+            // anchor's current transform happens to be, so it always recovers to the same spot.
+            if (viewmodelAnchor != null)
+            {
+                viewmodelAnchorRestPosition = viewmodelAnchor.localPosition;
+                viewmodelAnchorRestRotation = viewmodelAnchor.localRotation;
+            }
+        }
 
         public override void OnNetworkSpawn()
         {
@@ -112,6 +136,20 @@ namespace ShootingGallery.Gameplay
             {
                 spawnedRevolver.transform.localPosition = revolverLocalPositionOffset;
                 spawnedRevolver.transform.localRotation = Quaternion.Euler(revolverLocalEulerOffset);
+            }
+
+            // Recoil: kick the whole viewmodel anchor back and up on fire, ease back to rest.
+            // Applied to the anchor rather than the gun's own offset fields so it's completely
+            // independent of whatever rotation correction the gun itself needs - the anchor is a
+            // plain, unrotated child of the camera, so "back" and "up" here always mean what they
+            // look like regardless of how the revolver mesh is oriented on top of it.
+            if (IsOwner && viewmodelAnchor != null)
+            {
+                recoilAmount = Mathf.MoveTowards(recoilAmount, 0f, recoilRecoverySpeed * Time.deltaTime);
+                Vector3 recoilPositionOffset = new Vector3(0f, 0f, -recoilKickDistance * recoilAmount);
+                Quaternion recoilRotationOffset = Quaternion.Euler(-recoilKickPitch * recoilAmount, 0f, 0f);
+                viewmodelAnchor.localPosition = viewmodelAnchorRestPosition + recoilPositionOffset;
+                viewmodelAnchor.localRotation = recoilRotationOffset * viewmodelAnchorRestRotation;
             }
 
             if (!IsOwner || Keyboard.current == null)
@@ -151,6 +189,8 @@ namespace ShootingGallery.Gameplay
             CurrentAmmo.Value--;
             Debug.Log($"[PlayerWeapon] Fired - {CurrentAmmo.Value}/{MaxAmmo} shots left.");
 
+            recoilAmount = 1f;
+
             if (playerCamera == null)
             {
                 return;
@@ -160,14 +200,51 @@ namespace ShootingGallery.Gameplay
             // takes effect once the server applies it (see RequestHitTargetServerRpc), so a wall
             // or another object in the way correctly blocks the shot rather than needing a
             // separate occlusion check.
-            if (Physics.Raycast(playerCamera.transform.position, playerCamera.transform.forward, out RaycastHit hit, fireRange))
+            Vector3 origin = playerCamera.transform.position;
+            Vector3 direction = playerCamera.transform.forward;
+            Vector3 tracerEndPoint = origin + direction * fireRange;
+
+            if (Physics.Raycast(origin, direction, out RaycastHit hit, fireRange))
             {
+                tracerEndPoint = hit.point;
+
                 NetworkObject targetNetworkObject = hit.collider.GetComponentInParent<NetworkObject>();
                 if (targetNetworkObject != null && targetNetworkObject.TryGetComponent(out TargetController _))
                 {
                     RequestHitTargetServerRpc(new NetworkObjectReference(targetNetworkObject));
                 }
             }
+
+            // Start a little in front of the camera rather than exactly at the lens, so the
+            // tracer doesn't appear to originate from inside the near clip plane.
+            SpawnTracer(origin + direction * 0.3f, tracerEndPoint);
+        }
+
+        private void SpawnTracer(Vector3 start, Vector3 end)
+        {
+            var tracerGO = new GameObject("Tracer");
+            var lineRenderer = tracerGO.AddComponent<LineRenderer>();
+            lineRenderer.useWorldSpace = true;
+            lineRenderer.positionCount = 2;
+            lineRenderer.SetPosition(0, start);
+            lineRenderer.SetPosition(1, end);
+            lineRenderer.startWidth = tracerWidth;
+            lineRenderer.endWidth = tracerWidth;
+            lineRenderer.material = GetTracerMaterial();
+            lineRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            lineRenderer.receiveShadows = false;
+            Destroy(tracerGO, tracerDuration);
+        }
+
+        private Material GetTracerMaterial()
+        {
+            if (tracerMaterial == null)
+            {
+                tracerMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+                tracerMaterial.SetColor("_BaseColor", tracerColor);
+            }
+
+            return tracerMaterial;
         }
 
         [ServerRpc]
