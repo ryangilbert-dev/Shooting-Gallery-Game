@@ -18,7 +18,7 @@ public static class RevolverPreviewCapture
 
     private static readonly (string label, Quaternion rotation)[] Candidates =
     {
-        ("current", Quaternion.Euler(0f, 0f, 90f) * Base),
+        ("current", Quaternion.Euler(0f, 0f, -90f) * Base),
     };
 
     [MenuItem("Tools/Shooting Gallery/Capture Revolver Preview")]
