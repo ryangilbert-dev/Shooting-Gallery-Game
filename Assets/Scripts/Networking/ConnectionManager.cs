@@ -299,7 +299,28 @@ namespace ShootingGallery.Networking
             await EnsureServicesSignedInAsync();
 
             onStatusUpdate?.Invoke("Joining room...");
-            Lobby lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode);
+            Lobby lobby;
+            try
+            {
+                lobby = await LobbyService.Instance.JoinLobbyByCodeAsync(lobbyCode);
+            }
+            catch (LobbyServiceException e) when (e.Reason == LobbyExceptionReason.Conflict)
+            {
+                // Hit in real testing: this same (anonymous, persisted) identity had already
+                // joined this lobby once - most likely from an earlier attempt in this same
+                // session that didn't get all the way to a working game (e.g. the host's own
+                // Relay connection failing right after this client had already joined the lobby,
+                // prompting a retry). JoinLobbyByCodeAsync correctly refuses to join an identity
+                // that's already a member rather than silently no-op'ing, so recover by finding
+                // the lobby we're apparently already in instead of treating this as a hard
+                // failure - a plain retry would otherwise be stuck failing this exact way forever.
+                onStatusUpdate?.Invoke("Already in this room - resuming...");
+                lobby = await FindAlreadyJoinedLobbyByCodeAsync(lobbyCode);
+                if (lobby == null)
+                {
+                    throw; // Couldn't actually find it - surface the original conflict instead of masking it.
+                }
+            }
 
             onStatusUpdate?.Invoke("In the room - waiting for the host to open the connection...");
             string relayJoinCode = null;
@@ -322,6 +343,25 @@ namespace ShootingGallery.Networking
 
             onStatusUpdate?.Invoke("Connecting...");
             await StartClientWithRelayAsync(relayJoinCode);
+        }
+
+        /// <summary>Looks through the current (anonymous) identity's already-joined lobbies for
+        /// one matching the given code - used to recover from JoinLobbyByCodeAsync's 409 Conflict
+        /// when we're already a member (see StartClientWithLobbyAsync). Returns null if none
+        /// match, e.g. the conflict was actually about a different lobby entirely.</summary>
+        private async Task<Lobby> FindAlreadyJoinedLobbyByCodeAsync(string lobbyCode)
+        {
+            List<string> joinedLobbyIds = await LobbyService.Instance.GetJoinedLobbiesAsync();
+            foreach (string lobbyId in joinedLobbyIds)
+            {
+                Lobby candidate = await LobbyService.Instance.GetLobbyAsync(lobbyId);
+                if (string.Equals(candidate.LobbyCode, lobbyCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    return candidate;
+                }
+            }
+
+            return null;
         }
 
         private void StartLobbyHeartbeat(string lobbyId)

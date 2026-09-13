@@ -140,6 +140,55 @@ one was caught).
 **Still not fully confirmed working end-to-end** - a real two-machine host/join over the internet
 via the Lobby-wrapped flow hasn't been playtested yet, only that the project compiles.
 
+**Real two-machine test hit a genuine Relay connection failure - separate from anything Lobby
+touches, and not yet solved.** The Lobby half actually worked correctly this run (the joining
+player did get into the lobby, since the host's wait loop detected them and moved on) - what
+failed was the *next* step, the host's own `NetworkManager.Singleton.StartHost()` call inside
+`StartHostWithRelayAsync`, which threw a native "Failed to establish connection with the Relay
+server." followed by "Transport failure! Relay allocation needs to be recreated" and a host-side
+shutdown. `ConnectionManager.HandleTransportFailure` did its job - it caught this and returned the
+host to the main menu instead of leaving anyone stuck - but the underlying connection itself never
+worked in the first place, so retrying just failed the same way.
+
+This is a well-known Unity Relay error message with **more than one documented root cause**, found
+searching real reports of the identical text - it is not something the Lobby work above could have
+caused or can fix:
+- Most commonly reported cause: **a firewall/router blocking the actual Relay data port**, as
+  opposed to the fixed port (7778) Unity's QoS region-selection ping uses beforehand to pick the
+  nearest server - which is why the QoS step (visible in the log as a burst of "QosJob: send to
+  X:7778" lines, ~278ms, 55/55 responses) can succeed completely while the *real* connection right
+  after it fails; confirmed in [this Unity Discussions thread](https://discussions.unity.com/t/failed-to-establish-connection-with-the-relay-server/940680)
+  where the fix was specifically opening the firewall for the Relay port.
+- Also reported: a `com.unity.transport` package version/install issue, unrelated to networking at
+  all - fixed by reinstalling/pinning a different Transport version in
+  [this thread](https://discussions.unity.com/threads/failed-to-establish-connection-with-the-relay-server.1549967/).
+  Less likely here since this project's Transport version hasn't changed recently, but not ruled
+  out.
+- `UseSecureRelayConnection` (`isSecure`, currently `true` = DTLS) is a one-line, easy thing to
+  flip to `false` as a diagnostic - some networks handle plain UDP relay traffic better than DTLS -
+  though the community reports found don't show this alone reliably fixing it, so treat it as
+  worth trying quickly, not a confirmed fix.
+
+**Practical next steps, in order of effort**: (1) just retry hosting/joining once or twice - a
+single bad handshake attempt on an otherwise-fine connection does happen; (2) check whether Windows
+Firewall or antivirus prompted about the Unity Editor/build and got dismissed/blocked rather than
+allowed; (3) rule out being on a VPN, campus/corporate, or public Wi-Fi network on either machine,
+all of which commonly restrict arbitrary outbound UDP even though normal web browsing works fine;
+(4) as a quick test, flip `ConnectionManager.UseSecureRelayConnection` to `false` and try again.
+
+**A downstream symptom of the same root failure, now fixed on its own merits**: once the host's
+connection died, the joining player's console showed two different Lobby errors from retrying
+Join - `player is already a member of the lobby` (409 Conflict, from clicking Join again with the
+same identity after an earlier attempt had already added them to the lobby) and later `lobby not
+found` (404, once the abandoned lobby's heartbeat lapsed and Unity's servers cleaned it up for
+real). The 404 is accurate and expected once the lobby is genuinely gone - nothing to fix there,
+the host needs to re-host. The 409 was a real gap though: `StartClientWithLobbyAsync` now catches
+that specific conflict and recovers by looking up the lobby it's apparently already a member of
+(`GetJoinedLobbiesAsync`) instead of just failing - so a retry after some other failure doesn't get
+permanently stuck on "you're already here" for an identity that persists across attempts (Unity's
+anonymous auth caches the same player ID locally). **Not yet playtested** - written from the code
+and the exact error text/reason codes seen in this session's testing.
+
 **Confirmed in an actual play session: Relay allocations don't last forever.** After a while
 (a real session, not a hypothetical), hosting failed with "Failed to establish connection with
 the Relay server" / "Transport failure! Relay allocation needs to be recreated" and the host shut
