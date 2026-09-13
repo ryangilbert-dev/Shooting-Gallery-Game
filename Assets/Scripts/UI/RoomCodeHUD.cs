@@ -41,8 +41,13 @@ namespace ShootingGallery.UI
 
         private void Update()
         {
+            // Also hides once a second player has actually connected (PlayerBClientId set) - the
+            // code's job is done at that point, no reason to keep it on screen even though
+            // CurrentPhase itself doesn't move to GalleryPhase until both players walk through the
+            // gallery door.
             bool shouldShow = MatchManager.Instance != null
-                && MatchManager.Instance.CurrentPhase.Value == GamePhase.WaitingForPlayers;
+                && MatchManager.Instance.CurrentPhase.Value == GamePhase.WaitingForPlayers
+                && MatchManager.Instance.PlayerBClientId.Value == ulong.MaxValue;
 
             if (codeText.gameObject.activeSelf != shouldShow)
             {
@@ -78,7 +83,12 @@ namespace ShootingGallery.UI
             codeText.fontSize = 24;
             codeText.fontStyle = FontStyle.Bold;
             codeText.color = Color.white;
-            codeText.text = "Room Code: " + ConnectionManager.Instance.LastHostJoinCode;
+            // A lone host only gets a hard, Unity-enforced 60 seconds before Relay tears an
+            // unjoined allocation down (confirmed Relay server behavior - see NOTES.md), so by the
+            // time anyone's actually reading this in the bar, it may already be stale if nobody
+            // connected right away. Flagged rather than shown as if it's evergreen.
+            codeText.text = "Room Code: " + ConnectionManager.Instance.LastHostJoinCode +
+                              "\n(may have expired if unused for ~60s - rehost if a friend can't join)";
         }
     }
 }

@@ -41,6 +41,19 @@ one. Fixed (`ConnectionManager.UseSecureRelayConnection`, `true`). If installing
 package version ever produces a *different* signature mismatch, it'll show up the same way -
 isolated to those two calls specifically, not spread across the file.
 
+**Join can now actually fail visibly, instead of hanging on "waiting for host" forever**: a real
+join attempt got stuck exactly like that in testing - traced to `MainMenuUI.OnJoinClicked` only
+ever proving the join code resolved to a *live Relay allocation*, not that Netcode's own handshake
+with the host went on to actually succeed. (Briefly suspected the practice dummy taking the
+second player's slot instead - it doesn't; `TrySpawnDummyForSoloTesting` only ever touches
+`MatchManager.DummyLane`, never `PlayerBClientId`, and downstream `MatchManager` logic like that
+doesn't even run until after this connection already succeeds.) Fixed by watching
+`NetworkManager.OnClientConnectedCallback`/`OnClientDisconnectCallback` for our own client ID once
+the Relay call returns, plus a `Join Timeout Seconds` (default 15) fallback if neither ever fires -
+now a dead/expired host or a version/prefab mismatch (`ForceSamePrefabs` silently rejecting a
+client running different code than the host) surfaces as a real "Failed to join - ..." message
+instead of a silent hang. **Not yet playtested** - written from the code alone.
+
 **Room code stays visible in-game, not just on the menu**: `MainMenuUI`'s own room code display
 only exists for the few seconds before the Arena scene loads - once you're actually standing in
 the bar, that menu screen (and its Text object) is gone. `ConnectionManager.LastHostJoinCode`
@@ -64,6 +77,27 @@ one was caught).
 
 **Still not fully confirmed working end-to-end** - a real two-machine host/join over the internet
 hasn't been playtested yet, only that the project compiles now.
+
+**A lone host only has ~60 seconds to get a friend connected before Relay tears the allocation
+down - this is a hard Unity server-side policy, not adjustable from our code.** Hit in real
+testing: a friend tried to join and the code no longer worked. Confirmed via Unity's own docs and
+a Unity staff reply on the Unity Discussions forum - a host that's bound but has no peer connected
+yet gets a fixed 60-second time-to-live; there's no parameter on `CreateAllocationAsync` (or
+anywhere else in the Relay/Netcode APIs) to extend it. The only lever actually available is
+shrinking how long it takes a human to get the code from the host's screen into the joining
+player's Join field - `OnHostClicked` now copies the code to the host's clipboard immediately
+(`GUIUtility.systemCopyBuffer`) instead of relying on someone reading and retyping six characters
+correctly under time pressure, and both the menu's room code text and the in-bar `RoomCodeHUD`
+(see below) now say plainly that it expires in ~60 seconds if unused. **Practical takeaway for
+testing**: share the code over a live voice/video call so it's typed the instant it's read out,
+not through a chat message someone might not see for a minute - that's realistically the
+difference between making the window and not. A more complete fix exists (pairing Relay with
+Unity Lobby, whose codes last far longer and are what Unity's own samples use to avoid exactly
+this race) but that's new-package/new-setup-step scope, not something to reach for mid-session -
+worth doing later if the clipboard-copy + move-fast approach keeps being too tight in practice.
+Sources: [Relay client timeouts](https://docs.unity.com/ugs/en-us/manual/relay/manual/client-timeouts),
+[Unity Discussions - Relay connection failure after exactly one minute](https://discussions.unity.com/t/relay-connection-failure-after-exactly-one-minute/1624125)
+(Unity staff: "The default time to live is set to be 60 seconds when the host is alone").
 
 **Confirmed in an actual play session: Relay allocations don't last forever.** After a while
 (a real session, not a hypothetical), hosting failed with "Failed to establish connection with

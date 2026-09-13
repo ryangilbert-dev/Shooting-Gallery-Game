@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using ShootingGallery.Networking;
 using Unity.Netcode;
 using UnityEngine;
@@ -20,10 +21,28 @@ namespace ShootingGallery.UI
         [SerializeField] private Text roomCodeDisplayText;
         [SerializeField] private string arenaSceneName = "Arena";
 
+        // How long to wait, after the Relay-level join call succeeds, for Netcode to actually
+        // finish connecting to the host before giving up and telling the player it failed. The
+        // Relay call itself only proves the join code resolved to a live allocation - it says
+        // nothing about whether the host's Netcode session is still there to accept the
+        // connection, which is exactly the "stuck on waiting for host forever" gap this closes.
+        [SerializeField] private float joinTimeoutSeconds = 15f;
+
+        private Coroutine joinTimeoutCoroutine;
+        private bool joinResolved;
+
         private void Awake()
         {
             hostButton.onClick.AddListener(OnHostClicked);
             joinButton.onClick.AddListener(OnJoinClicked);
+        }
+
+        private void OnDestroy()
+        {
+            // Covers both the success path (this scene unloads once Netcode scene-syncs us into
+            // Arena) and any other early teardown - without this, a callback could still fire into
+            // a MonoBehaviour whose own GameObject is already gone.
+            CleanupJoinWatch();
         }
 
         private async void OnHostClicked()
@@ -37,6 +56,15 @@ namespace ShootingGallery.UI
                 SetStatus("Creating room...");
                 string joinCode = await ConnectionManager.Instance.StartHostWithRelayAsync();
                 SetRoomCode(joinCode);
+
+                // Unity Relay gives a lone host (bound, but no peer connected yet) a hard 60-second
+                // window before tearing the allocation down - confirmed Relay server behavior, not
+                // something any client-side setting can extend (see NOTES.md). The only real lever
+                // we have is cutting down how long it takes a human to get the code from this
+                // screen into a friend's Join field, so copy it to the clipboard immediately rather
+                // than relying on them reading/retyping six characters correctly under time
+                // pressure.
+                GUIUtility.systemCopyBuffer = joinCode;
                 SetStatus("Hosting - loading arena...");
                 NetworkManager.Singleton.SceneManager.LoadScene(arenaSceneName, LoadSceneMode.Single);
             }
@@ -64,13 +92,86 @@ namespace ShootingGallery.UI
             try
             {
                 await ConnectionManager.Instance.StartClientWithRelayAsync(code);
-                SetStatus("Connected - waiting for host...");
+                SetStatus("Connected to Relay - waiting for host...");
+                BeginWaitingForConnection();
             }
             catch (Exception e)
             {
                 Debug.LogError("[MainMenuUI] Failed to join: " + e);
                 SetStatus("Failed to join - " + e.Message);
                 SetInteractable(true);
+            }
+        }
+
+        /// <summary>A successful StartClientWithRelayAsync only proves the join code resolved to
+        /// a live Relay allocation - it says nothing about whether Netcode's own handshake with
+        /// the host actually completes after that. Without this, a handshake that silently never
+        /// finishes (host's session already gone, a version/prefab mismatch, etc.) just left the
+        /// status text frozen on "waiting for host" forever with no feedback at all - this is what
+        /// was actually being seen, not the practice dummy taking a slot (that only ever affects
+        /// MatchManager's lane bookkeeping, which doesn't run until after this succeeds).</summary>
+        private void BeginWaitingForConnection()
+        {
+            joinResolved = false;
+            NetworkManager.Singleton.OnClientConnectedCallback += HandleConnectedWhileJoining;
+            NetworkManager.Singleton.OnClientDisconnectCallback += HandleDisconnectedWhileJoining;
+            joinTimeoutCoroutine = StartCoroutine(JoinTimeoutCountdown());
+        }
+
+        private void HandleConnectedWhileJoining(ulong clientId)
+        {
+            if (clientId != NetworkManager.Singleton.LocalClientId)
+            {
+                return; // Some other client connecting to the same host - not about us.
+            }
+
+            // Success - from here Netcode's own scene sync takes over and unloads this scene
+            // (see OnDestroy), so there's no further status text to set.
+            joinResolved = true;
+            CleanupJoinWatch();
+        }
+
+        private void HandleDisconnectedWhileJoining(ulong clientId)
+        {
+            if (joinResolved || clientId != NetworkManager.Singleton.LocalClientId)
+            {
+                return;
+            }
+
+            joinResolved = true;
+            CleanupJoinWatch();
+            SetStatus("Failed to join - disconnected before connecting (room may be full, the " +
+                       "code may have expired, or the host isn't running anymore).");
+            SetInteractable(true);
+        }
+
+        private IEnumerator JoinTimeoutCountdown()
+        {
+            yield return new WaitForSeconds(joinTimeoutSeconds);
+
+            if (!joinResolved)
+            {
+                joinResolved = true;
+                CleanupJoinWatch();
+                SetStatus("Failed to join - timed out waiting for the host. Double-check the " +
+                           "room code and that they're still hosting.");
+                SetInteractable(true);
+                NetworkManager.Singleton.Shutdown();
+            }
+        }
+
+        private void CleanupJoinWatch()
+        {
+            if (NetworkManager.Singleton != null)
+            {
+                NetworkManager.Singleton.OnClientConnectedCallback -= HandleConnectedWhileJoining;
+                NetworkManager.Singleton.OnClientDisconnectCallback -= HandleDisconnectedWhileJoining;
+            }
+
+            if (joinTimeoutCoroutine != null)
+            {
+                StopCoroutine(joinTimeoutCoroutine);
+                joinTimeoutCoroutine = null;
             }
         }
 
@@ -108,7 +209,11 @@ namespace ShootingGallery.UI
         {
             if (roomCodeDisplayText != null)
             {
-                roomCodeDisplayText.text = "Room Code: " + code;
+                // The urgency here isn't decoration - a lone host has a hard, Unity-enforced 60
+                // second window before Relay tears the allocation down (see the comment in
+                // OnHostClicked / NOTES.md), so whoever's reading this needs to know to move fast
+                // rather than casually alt-tabbing to find a friend to send it to.
+                roomCodeDisplayText.text = "Room Code: " + code + "\n(copied - share it now, expires in ~60s if unused)";
             }
         }
     }
