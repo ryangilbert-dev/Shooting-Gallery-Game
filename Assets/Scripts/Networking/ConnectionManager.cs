@@ -62,7 +62,17 @@ namespace ShootingGallery.Networking
         // ("dtls"/"udp") an older/different version apparently uses - found via an actual compile
         // error (CS1503, argument couldn't convert from string to bool), not assumed up front.
         // True = DTLS-encrypted traffic through the relay, matching the original intent.
-        private const bool UseSecureRelayConnection = true;
+        //
+        // TEMPORARILY set to false as a live diagnostic: a real two-machine test hit "Failed to
+        // establish connection with the Relay server" right at the host's own bind step (see
+        // NOTES.md) - a well-documented Unity Relay failure with more than one real-world cause,
+        // and a DTLS handshake some networks mishandle (while plain UDP through the same relay
+        // works fine) is one of the two most commonly reported ones. This trades away the relay
+        // traffic's encryption (still just as NAT-traversing either way - Relay's core function
+        // doesn't depend on isSecure) purely to test whether that's actually what's blocking this
+        // specific connection. Flip back to `true` once confirmed either way - if the connection
+        // still fails with this off, DTLS wasn't the cause and this should revert.
+        private const bool UseSecureRelayConnection = false;
 
         // --- Lobby (see the class-level "Why Lobby" note above) ---
         private const string LobbyName = "ShootingGalleryDuel";
@@ -125,8 +135,19 @@ namespace ShootingGallery.Networking
 
         private void HandleTransportFailure()
         {
-            Debug.LogWarning("[ConnectionManager] Transport failure (e.g. a Relay allocation expiring after a long session) - " +
-                              "returning to the main menu so hosting/joining again is a fresh reconnect.");
+            Debug.LogWarning("[ConnectionManager] Transport failure (e.g. a Relay allocation expiring after a long session, " +
+                              "or the initial Relay connection never establishing) - returning to the main menu so hosting/joining again is a fresh reconnect.");
+
+            // Real failure mode hit in testing: this fires on the host's machine right after
+            // StartHostWithLobbyAsync already published a working-looking relay code into its
+            // lobby and returned "success" (NetworkManager.StartHost() only reports whether it was
+            // *called*, not whether the connection actually established - the real failure/success
+            // is only known a moment later, asynchronously, via this same event). Without this
+            // cleanup, that lobby was left abandoned with a dead relay code still in it - no longer
+            // heartbeated (already stopped right after publishing), but not deleted either, so it
+            // could still look "current" to a joining player for a little while. A no-op if this
+            // instance was never hosting (hostLobbyId only gets set by StartHostWithLobbyAsync).
+            _ = TryDeleteHostLobbyAsync();
 
             if (NetworkManager.Singleton != null)
             {

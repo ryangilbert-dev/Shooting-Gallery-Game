@@ -174,7 +174,22 @@ single bad handshake attempt on an otherwise-fine connection does happen; (2) ch
 Firewall or antivirus prompted about the Unity Editor/build and got dismissed/blocked rather than
 allowed; (3) rule out being on a VPN, campus/corporate, or public Wi-Fi network on either machine,
 all of which commonly restrict arbitrary outbound UDP even though normal web browsing works fine;
-(4) as a quick test, flip `ConnectionManager.UseSecureRelayConnection` to `false` and try again.
+(4) `UseSecureRelayConnection` is currently set to `false` as a live test of this (see its own
+comment in `ConnectionManager.cs`) - revert to `true` once this is confirmed either way.
+
+**This is also the real explanation for a confusing-looking symptom, not a separate bug**: a
+retried host attempt (after their Relay connection failed and `HandleTransportFailure` quietly
+dropped them back to the menu) creates a **brand-new Lobby with a brand-new code** -
+`StartHostWithLobbyAsync` has no memory of the previous attempt. A player still waiting on the
+*old* code is waiting on a lobby nobody is heartbeating or publishing a Relay code into anymore -
+from their side it just looks like being permanently stuck, not like "the host had to restart."
+`HandleTransportFailure` now also deletes that abandoned lobby immediately (previously it was only
+implicitly cleaned up later, once its heartbeat lapsed) so a stale lobby doesn't linger looking
+current for even a little while - but the underlying confusion (host silently gets a new code,
+the other player has no way to know) is a real UX gap that only the Relay connection itself
+actually working reliably first-try, or some kind of "the host is back, here's the new code"
+signal, would fully close. Worth a look later if retries stay common even once the Relay
+connection issue itself is resolved.
 
 **A downstream symptom of the same root failure, now fixed on its own merits**: once the host's
 connection died, the joining player's console showed two different Lobby errors from retrying
