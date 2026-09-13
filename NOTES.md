@@ -460,6 +460,19 @@ spawn point and the divider wall. The wagon carries 3 more medallion targets, th
 on the face pointing back toward that lane's spawn (same medallion sizing/mechanic as the
 wall-mounted ones).
 
+**Wagon rotated 90 degrees so its 3 medallions actually fit** - playtesting found the wagon's long
+axis sitting along world X, the same axis `AddMedallionsOnPropFace` measures the mounting face's
+*depth* from, which left the 3 medallions spread across its short axis (world Z) instead and
+cramped together. `BuildLaneProps` now places it with a `Quaternion.Euler(0, 90, 0)` instead of
+identity - no change needed to the medallion placement code itself, since it re-measures the
+prop's live (post-rotation) world bounds on every call rather than assuming a fixed orientation,
+so it automatically spreads across whichever axis is actually long once the prop itself turns.
+**The exact direction (90 vs -90) is an unconfirmed guess** about which side of the wagon should
+face the player - the fit itself works either way since it's driven purely by measured extents,
+not by which of the two flips was chosen; flip the sign in `BuildLaneProps` if the wrong side ends
+up facing the lane. Needs **Rebuild Arena Scene Only** to pick up, and a look in the Editor to
+confirm both the fit and which face ends up visible.
+
 **Shooting counter**: a wooden counter/rail (`ShootingCounter`, `ProjectScaffolder.BuildShootingCounter`)
 at each lane's firing line, right where the player spawns - inspired by real shooting-gallery
 photo references (a long wooden counter along the front of the stations). Purely decorative range

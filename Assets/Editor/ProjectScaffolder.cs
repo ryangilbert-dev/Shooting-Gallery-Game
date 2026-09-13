@@ -780,7 +780,16 @@ public static class ProjectScaffolder
         float laneSign = Mathf.Sign(laneOriginX);
         Vector3 faceNormal = new Vector3(-laneSign, 0f, 0f);
 
-        GameObject wagon = PlaceRangeProp(wagonPrefab, parent, new Vector3(laneOriginX * 0.5f, 0f, 3f * gallerySizeScale), Quaternion.identity);
+        // Rotated 90 degrees around Y from its raw import orientation - the wagon's long axis was
+        // sitting along world X (the same axis AddMedallionsOnPropFace measures the mounting
+        // face's *depth* from), which meant the 3 medallions below were being spread across its
+        // short axis (world Z) and cramping together. Turning the wagon a quarter-turn swaps
+        // that: AddMedallionsOnPropFace re-measures the prop's live (post-rotation) world bounds
+        // every time it's called, so with no other change it now spreads the medallions across
+        // what's actually the wagon's long side. Direction (90 vs -90) is a first guess about
+        // which side should face the player - the fit itself works either way since it only
+        // depends on the box's measured extents, not which of the two flips was chosen.
+        GameObject wagon = PlaceRangeProp(wagonPrefab, parent, new Vector3(laneOriginX * 0.5f, 0f, 3f * gallerySizeScale), Quaternion.Euler(0f, 90f, 0f));
         AddMedallionsOnPropFace(wagon, faceNormal, 3, defaultMat, hitMat);
 
         GameObject crate = PlaceRangeProp(cratePrefab, parent, new Vector3(laneOriginX * 0.4f, 0f, -3f * gallerySizeScale), Quaternion.identity);
