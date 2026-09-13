@@ -63,15 +63,15 @@ namespace ShootingGallery.Networking
         // error (CS1503, argument couldn't convert from string to bool), not assumed up front.
         // True = DTLS-encrypted traffic through the relay, matching the original intent.
         //
-        // TEMPORARILY set to false as a live diagnostic: a real two-machine test hit "Failed to
-        // establish connection with the Relay server" right at the host's own bind step (see
-        // NOTES.md) - a well-documented Unity Relay failure with more than one real-world cause,
-        // and a DTLS handshake some networks mishandle (while plain UDP through the same relay
-        // works fine) is one of the two most commonly reported ones. This trades away the relay
-        // traffic's encryption (still just as NAT-traversing either way - Relay's core function
-        // doesn't depend on isSecure) purely to test whether that's actually what's blocking this
-        // specific connection. Flip back to `true` once confirmed either way - if the connection
-        // still fails with this off, DTLS wasn't the cause and this should revert.
+        // Set to false after a real two-machine test hit "Failed to establish connection with the
+        // Relay server" right at the host's own bind step with this true (see NOTES.md) - a
+        // well-documented Unity Relay failure with more than one real-world cause, and the DTLS
+        // handshake some networks mishandle (while plain UDP through the same relay works fine)
+        // is what this specific connection confirmed it was: switching to false fixed a real
+        // connection on the very next test. Relay's core NAT-traversal function doesn't depend on
+        // isSecure either way - this only trades away encryption of the relay traffic itself. If
+        // this ever needs to go back to true (e.g. encryption becomes a real requirement), that
+        // change needs its own re-test against this exact failure, not just a confident flip back.
         private const bool UseSecureRelayConnection = false;
 
         // --- Lobby (see the class-level "Why Lobby" note above) ---

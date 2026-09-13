@@ -97,11 +97,13 @@ wraps Relay** to remove the human from that race entirely:
   therefore the code) actually exists, well before the method returns - `onStatusUpdate`'s
   "Waiting for a player to join..." message and the room code display are two independent UI
   elements now updating independently, not one waiting on the other.
-- **Not yet playtested end-to-end** - written from the code and API docs alone; the Lobby APIs
-  (`CreateLobbyAsync`, `JoinLobbyByCodeAsync`, `SendHeartbeatPingAsync`, etc.) come from the same
-  already-installed `com.unity.services.multiplayer` package Relay does, so no new package/project
-  setup should be needed beyond what Relay already required - but that's an inference from reading
-  the package source, not a confirmed clean first run.
+- **Confirmed working in a real two-machine internet test** - the Lobby APIs (`CreateLobbyAsync`,
+  `JoinLobbyByCodeAsync`, `SendHeartbeatPingAsync`, etc.) came from the same already-installed
+  `com.unity.services.multiplayer` package Relay does, and no new package/project setup was needed
+  beyond what Relay already required, exactly as inferred from reading the package source ahead of
+  time. The join code no longer racing a 60-second cutoff was confirmed in practice, not just in
+  theory - see "Debugging network/Relay/Lobby issues" below for the fuller story of what else got
+  found and fixed along the way to a working end-to-end connection.
 
 **"Practice Solo" - a side effect of the Lobby change worth knowing about**: the old Host button
 used to load straight into the Arena scene immediately, which incidentally doubled as the easy way
@@ -137,47 +139,42 @@ scripts, and Unity only builds it when *all* of them compile cleanly. It disappe
 the most useful signal there's a compile error worth checking the Console for (exactly how this
 one was caught).
 
-**Still not fully confirmed working end-to-end** - a real two-machine host/join over the internet
-via the Lobby-wrapped flow hasn't been playtested yet, only that the project compiles.
+**Confirmed working end-to-end** - a real two-machine host/join over the internet via the
+Lobby-wrapped flow, after tracking down and fixing the Relay connection failure detailed just
+below.
 
 **Real two-machine test hit a genuine Relay connection failure - separate from anything Lobby
-touches, and not yet solved.** The Lobby half actually worked correctly this run (the joining
+touches - and it's now fixed.** The Lobby half actually worked correctly that run (the joining
 player did get into the lobby, since the host's wait loop detected them and moved on) - what
 failed was the *next* step, the host's own `NetworkManager.Singleton.StartHost()` call inside
 `StartHostWithRelayAsync`, which threw a native "Failed to establish connection with the Relay
 server." followed by "Transport failure! Relay allocation needs to be recreated" and a host-side
-shutdown. `ConnectionManager.HandleTransportFailure` did its job - it caught this and returned the
-host to the main menu instead of leaving anyone stuck - but the underlying connection itself never
-worked in the first place, so retrying just failed the same way.
+shutdown. `ConnectionManager.HandleTransportFailure` did its job throughout this - it caught the
+failure and returned the host to the main menu instead of leaving anyone stuck - but the
+underlying connection itself wasn't working, so retrying kept failing the same way until the real
+cause was found.
 
 This is a well-known Unity Relay error message with **more than one documented root cause**, found
 searching real reports of the identical text - it is not something the Lobby work above could have
-caused or can fix:
-- Most commonly reported cause: **a firewall/router blocking the actual Relay data port**, as
-  opposed to the fixed port (7778) Unity's QoS region-selection ping uses beforehand to pick the
-  nearest server - which is why the QoS step (visible in the log as a burst of "QosJob: send to
-  X:7778" lines, ~278ms, 55/55 responses) can succeed completely while the *real* connection right
-  after it fails; confirmed in [this Unity Discussions thread](https://discussions.unity.com/t/failed-to-establish-connection-with-the-relay-server/940680)
-  where the fix was specifically opening the firewall for the Relay port.
-- Also reported: a `com.unity.transport` package version/install issue, unrelated to networking at
-  all - fixed by reinstalling/pinning a different Transport version in
+caused, and the fix confirms it wasn't the Lobby side at fault:
+- **Confirmed root cause for this project: the DTLS (encrypted) handshake.** Flipping
+  `ConnectionManager.UseSecureRelayConnection` from `true` to `false` (plain UDP through the same
+  Relay servers instead) fixed a real two-machine connection on the very next test - this specific
+  network/environment combination could complete a plain UDP relay connection but not a DTLS one.
+  Left `false` going forward; see the comment on that constant for what would need re-testing if
+  DTLS ever needs to come back.
+- Other documented causes, ruled out here but worth knowing about if this error resurfaces somewhere
+  DTLS isn't the culprit: **a firewall/router blocking the actual Relay data port** (as opposed to
+  the fixed port 7778 Unity's QoS region-selection ping uses beforehand to pick the nearest server -
+  which is why that QoS step, visible in the log as a burst of "QosJob: send to X:7778" lines,
+  ~278ms, 55/55 responses, can succeed completely while the *real* connection right after it fails);
+  confirmed as the cause in [this Unity Discussions thread](https://discussions.unity.com/t/failed-to-establish-connection-with-the-relay-server/940680).
+  Also reported elsewhere: a `com.unity.transport` package version/install issue, fixed by
+  reinstalling/pinning a different Transport version in
   [this thread](https://discussions.unity.com/threads/failed-to-establish-connection-with-the-relay-server.1549967/).
-  Less likely here since this project's Transport version hasn't changed recently, but not ruled
-  out.
-- `UseSecureRelayConnection` (`isSecure`, currently `true` = DTLS) is a one-line, easy thing to
-  flip to `false` as a diagnostic - some networks handle plain UDP relay traffic better than DTLS -
-  though the community reports found don't show this alone reliably fixing it, so treat it as
-  worth trying quickly, not a confirmed fix.
 
-**Practical next steps, in order of effort**: (1) just retry hosting/joining once or twice - a
-single bad handshake attempt on an otherwise-fine connection does happen; (2) check whether Windows
-Firewall or antivirus prompted about the Unity Editor/build and got dismissed/blocked rather than
-allowed; (3) rule out being on a VPN, campus/corporate, or public Wi-Fi network on either machine,
-all of which commonly restrict arbitrary outbound UDP even though normal web browsing works fine;
-(4) `UseSecureRelayConnection` is currently set to `false` as a live test of this (see its own
-comment in `ConnectionManager.cs`) - revert to `true` once this is confirmed either way.
-
-**This is also the real explanation for a confusing-looking symptom, not a separate bug**: a
+**This is also the real explanation for a confusing-looking symptom that showed up along the way,
+not a separate bug**: while this was still unresolved, a
 retried host attempt (after their Relay connection failed and `HandleTransportFailure` quietly
 dropped them back to the menu) creates a **brand-new Lobby with a brand-new code** -
 `StartHostWithLobbyAsync` has no memory of the previous attempt. A player still waiting on the
@@ -238,6 +235,71 @@ and the newly-spawned player's own, since Netcode's scene sync takes a few frame
 menu scene, and `PlayerController` enables the new listener immediately on spawn. Fixed by having
 `MainMenuUI` disable the menu's listener itself the instant Host/Join is clicked, rather than
 waiting on the scene unload to get to it.
+
+## Debugging network/Relay/Lobby issues - a process that's worked so far
+
+Getting real internet play working took several rounds of hitting a real error, tracking it down,
+and fixing it - the same handful of techniques kept being what actually moved things forward each
+time, worth reusing whenever more networking issues show up (which, being real internet
+infrastructure outside this project's own control, they will):
+
+1. **Figure out which layer an error is actually coming from before guessing at a fix.** A Unity
+   Relay/Lobby session has several distinct layers that fail in different ways and need completely
+   different fixes: application code (a plain C# exception, e.g. `NullReferenceException`), the
+   Lobby service (a `LobbyServiceException` with a `Reason`, e.g. `Conflict` for a 409), and the
+   actual Relay/transport connection (native Burst-compiled log lines like "Failed to establish
+   connection with the Relay server", unrelated to anything Lobby-side). Treating these as one
+   undifferentiated "networking is broken" bucket wastes time chasing the wrong fix - e.g. briefly
+   suspecting the practice dummy for a stuck join that was actually a missing Netcode-handshake
+   timeout, or almost treating the Lobby "already a member"/"lobby not found" errors as their own
+   bug when they were actually just downstream symptoms of the Relay layer failing underneath.
+2. **A generic exception message never tells you *where* - always get the real stack trace before
+   fixing anything.** `NullReferenceException.Message` is always the exact same "Object reference
+   not set to an instance of an object" string no matter which line threw it. Guessing from the
+   message alone risks fixing a real-but-wrong gap (which is still worth fixing, just not
+   necessarily *the* fix) - the actual line only comes from clicking the error open in the Unity
+   Console (or the equivalent in a log file) to see its full stack trace.
+3. **Cross-check assumptions against the actually-installed package source, not general knowledge
+   of "how Unity Relay/Lobby usually works."** This project's Relay/Lobby packages are bundled
+   inside `com.unity.services.multiplayer` under `Library/PackageCache/` - real, readable C# source,
+   not a black box. Reading it directly (rather than trusting an API's name/docs to imply its
+   behavior) is what caught: `SetHostRelayData`'s final argument being a plain `bool` instead of
+   the `string` an older doc pattern suggested (a real `CS1503` compile error); `GetJoinedLobbiesAsync`
+   returning a raw, possibly-`null` result instead of an empty list; and that the SDK's own
+   internal conflict-retry logic only covers one specific Lobby error reason, not the generic HTTP
+   409 this project's own retry code needed to handle itself.
+4. **When behavior looks like a real Unity/Relay/Lobby limitation rather than a bug in this
+   project's own code, search for the *exact* error text rather than reasoning from general
+   knowledge.** These are real, widely-used Unity services - other developers have hit and posted
+   about the same exact error strings, sometimes with a Unity staff reply giving the precise
+   number/cause (this is how the 60-second "host alone" Relay timeout was confirmed as a real,
+   hard-coded server policy rather than a guess, and how "Failed to establish connection with the
+   Relay server" turned up more than one documented real cause). Always note the source link in
+   NOTES.md alongside the finding, not just the conclusion, so it can be re-checked later.
+5. **Distinguish a genuinely new bug from a downstream symptom of an already-diagnosed root
+   cause.** The Lobby "already a member"/"lobby not found" errors, and later "player 2 stuck on an
+   old code while player 1 loads in with a new one," both turned out to be consequences of the
+   same still-unresolved Relay connection failure cascading through retries - not separate bugs
+   needing their own fixes. Tracing the actual causal chain (what called what, in what order,
+   given what's already known to fail) before writing a fix avoids solving symptoms one at a time
+   forever instead of the actual cause.
+6. **Prefer cheap, clearly-labeled, easily-reversible diagnostic changes over large speculative
+   rewrites when the suspected cause is a real-world network/environment condition that can't be
+   verified without an actual live test.** Flipping `ConnectionManager.UseSecureRelayConnection`
+   (DTLS on/off) - a one-line, well-commented toggle - to test a specific documented cause of the
+   Relay connection failure, is the concrete example: cheap to try, cheap to revert, and it
+   confirmed the real cause on the very next test instead of a much larger, unproven change.
+7. **Write down what was found (including dead ends) as it's found, not just the final fix** -
+   several sections in this file above are exactly that trail, and it's what made it possible to
+   correctly recognize step 5's "same root cause, different symptom" pattern instead of re-diagnosing
+   from scratch each time a new-looking error showed up.
+
+**Confirmed working end-to-end**: a real two-machine internet host/join, after setting
+`UseSecureRelayConnection` to `false` - the DTLS handshake was the actual cause of "Failed to
+establish connection with the Relay server" for this specific test. Left `false` for now since
+it's confirmed to matter here; revisit re-enabling DTLS (`true`) only if encryption of the relay
+traffic itself becomes a real requirement, since turning it back on is exactly what would need
+re-testing against this same failure.
 
 ## Finding & tuning the revolver
 
@@ -606,14 +668,14 @@ to apply it.
 
 See git log for the detailed history. Rough milestone state as of the last update to this file:
 - ✅ Netcode connection (host/join, lane assignment)
-- 🟡 Join-by-room-code over the internet via Unity Lobby + Relay, for playtesting with friends
-  off-LAN - see "Joining over the internet with a room code" above. Account/package setup done, a
-  real compile-error signature mismatch already found and fixed, and a real join attempt that hung
-  forever on "waiting for host" (now surfaces a real failure message) and a real 60-second
-  lone-host Relay cutoff (now avoided entirely by wrapping Relay in Lobby, whose code doesn't race
-  that timer) have both been hit in actual testing and addressed. A "Practice Solo" button was
-  added to keep solo dummy-testing working now that Host waits for a real second player. The
-  Lobby-wrapped flow itself still hasn't been playtested end-to-end.
+- ✅ Join-by-room-code over the internet via Unity Lobby + Relay, for playtesting with friends
+  off-LAN - **confirmed working in a real two-machine internet test**. See "Joining over the
+  internet with a room code" and "Debugging network/Relay/Lobby issues" above for the full trail:
+  a compile-error signature mismatch, a join attempt that hung forever on "waiting for host", a
+  real 60-second lone-host Relay cutoff (avoided by wrapping Relay in Lobby), and finally a DTLS
+  handshake failure (`UseSecureRelayConnection` now `false`) were each hit in actual testing and
+  fixed in turn. A "Practice Solo" button keeps solo dummy-testing working now that Host waits for
+  a real second player.
 - ✅ Random character models, correctly scaled
 - ✅ WASD/mouse movement, eye-height camera
 - ✅ Bar + Gallery rooms, colored, doorway sized right
