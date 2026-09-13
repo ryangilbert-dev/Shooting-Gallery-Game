@@ -25,6 +25,7 @@ public static class ProjectScaffolder
     private const string PrefabsFolder = "Assets/Prefabs/Networking";
     private const string RoomMaterialsFolder = "Assets/Materials/Rooms";
     private const string PropPrefabFolder = "Assets/Prefabs/Props";
+    private const string WesternPackFbxFolder = "Assets/Art/Mini PSX Western Pack/FBX";
 
     private const string BootstrapScenePath = ScenesFolder + "/Bootstrap.unity";
     private const string MainMenuScenePath = ScenesFolder + "/MainMenu.unity";
@@ -537,21 +538,30 @@ public static class ProjectScaffolder
         }
     }
 
-    /// <summary>Greybox furniture pass for the bar - a counter with shelving and a row of stools
-    /// along the east wall (opposite the gallery doorway on the west), a handful of round dining
-    /// tables with stools scattered across the remaining floor, and a couple of barrels near the
-    /// entrance. All simple colored primitives, no imported props - a blockout of the room's
-    /// layout and scale (sized relative to characters standing ~3.33 units tall) loosely modeled
-    /// on a real tavern floor-plan reference, rather than final dressing. Not yet visually
-    /// confirmed - first pass at fitting all of this into the room without anything overlapping.
-    /// </summary>
+    /// <summary>Furniture pass for the bar - a counter with shelving and a row of log-stump seats
+    /// along the east wall (opposite the gallery doorway on the west), a handful of poker tables
+    /// with real chairs scattered across the remaining floor, and a couple of barrels near the
+    /// entrance. The counter/shelf/barrels are still plain colored primitives (no equivalent
+    /// imported asset was worth building a whole pipeline for), but the tables/chairs/stump-seats
+    /// are real `Assets/Art/Mini PSX Western Pack` props (see `BarFurnitureSetup`) - this replaced
+    /// an earlier all-cylinder greybox pass once the room's layout/scale was confirmed to fit.
+    /// Sized relative to characters standing ~3.33 units tall, loosely modeled on a real tavern
+    /// floor-plan reference.</summary>
     private static void BuildBarInterior(Transform barRoom, Vector3 barCenter, float roomHalfWidth, float roomHalfDepth)
     {
         Material counterMat = CreateColorMaterial(RoomMaterialsFolder + "/BarCounterWood.mat", new Color(0.32f, 0.19f, 0.1f));
         Material shelfMat = CreateColorMaterial(RoomMaterialsFolder + "/BarShelfWood.mat", new Color(0.28f, 0.16f, 0.08f));
-        Material tableMat = CreateColorMaterial(RoomMaterialsFolder + "/BarTableWood.mat", new Color(0.45f, 0.29f, 0.16f));
-        Material stoolMat = CreateColorMaterial(RoomMaterialsFolder + "/BarStoolWood.mat", new Color(0.36f, 0.22f, 0.12f));
         Material barrelMat = CreateColorMaterial(RoomMaterialsFolder + "/BarBarrelWood.mat", new Color(0.4f, 0.26f, 0.13f));
+
+        GameObject pokerTablePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PropPrefabFolder + "/PokerTable.prefab");
+        GameObject chairPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PropPrefabFolder + "/Chair.prefab");
+        GameObject logStumpPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PropPrefabFolder + "/LogStump.prefab");
+        if (pokerTablePrefab == null || chairPrefab == null || logStumpPrefab == null)
+        {
+            Debug.LogWarning("[ProjectScaffolder] PokerTable/Chair/LogStump prefab not found under " + PropPrefabFolder +
+                              " - run 'Setup Bar Furniture (Poker Table, Chair, Log Stump)' first, then rebuild the Arena scene.");
+            return;
+        }
 
         // --- Bar counter along the east wall (the far side from the gallery doorway) ---
         const float counterHeight = 1.2f; // Matches the gallery's own ShootingCounter - a chest/waist-height counter.
@@ -563,16 +573,20 @@ public static class ProjectScaffolder
         // Shelving against the wall behind the counter.
         BuildBox(barRoom, "BarShelf", new Vector3(barCenter.x + roomHalfWidth - 0.6f, 1.5f, barCenter.z), new Vector3(0.4f, 3f, counterLength), shelfMat);
 
-        // A row of stools along the counter's room-facing side.
+        // A row of log stumps along the counter's room-facing side, each turned to face the
+        // counter (they sit west of it, at lower X, so "facing the counter" is +X - a first guess
+        // about which local axis LogStump.fbx considers its own front; flip to Vector3.left if it
+        // turns out backwards once visible).
         float stoolZStart = -counterLength / 2f + 1.5f;
         float stoolSpacing = (counterLength - 3f) / 4f;
+        Quaternion facingCounter = Quaternion.LookRotation(Vector3.right, Vector3.up);
         for (int i = 0; i < 5; i++)
         {
             float z = barCenter.z + stoolZStart + i * stoolSpacing;
-            BuildCylinder(barRoom, "BarStool", new Vector3(counterX - 1.3f, 0.5f, z), 0.3f, 1f, stoolMat);
+            PlaceRangeProp(logStumpPrefab, barRoom, new Vector3(counterX - 1.3f, 0f, z), facingCounter).name = "BarStump";
         }
 
-        // --- Dining area: a handful of round tables with stools, scattered across the open
+        // --- Dining area: a handful of poker tables with chairs, scattered across the open
         // floor between the doorway and the counter ---
         Vector3[] tableOffsetsFromCenter =
         {
@@ -584,7 +598,7 @@ public static class ProjectScaffolder
 
         foreach (Vector3 offset in tableOffsetsFromCenter)
         {
-            BuildBarTable(barRoom, barCenter + offset, tableMat, stoolMat);
+            BuildBarTable(barRoom, barCenter + offset, pokerTablePrefab, chairPrefab);
         }
 
         // --- A couple of barrels just inside the entrance ---
@@ -592,13 +606,15 @@ public static class ProjectScaffolder
         BuildCylinder(barRoom, "EntranceBarrel", barCenter + new Vector3(-roomHalfWidth + 3f, 0.6f, 4f), 0.5f, 1.2f, barrelMat);
     }
 
-    /// <summary>One round table with four stools around it.</summary>
-    private static void BuildBarTable(Transform parent, Vector3 center, Material tableMat, Material stoolMat)
+    /// <summary>One poker table with four chairs around it, each chair turned to face the table
+    /// center - same "which local axis is forward" guess as the counter's log stumps above, flip
+    /// each offset's facing by 180 if Chair.fbx's front turns out to be the opposite convention.
+    /// </summary>
+    private static void BuildBarTable(Transform parent, Vector3 center, GameObject pokerTablePrefab, GameObject chairPrefab)
     {
-        const float tableHeight = 0.9f;
-        BuildCylinder(parent, "BarTable", center + new Vector3(0f, tableHeight / 2f, 0f), 0.9f, tableHeight, tableMat);
+        PlaceRangeProp(pokerTablePrefab, parent, center, Quaternion.identity).name = "PokerTable";
 
-        Vector3[] stoolOffsets =
+        Vector3[] chairOffsets =
         {
             new Vector3(1.4f, 0f, 0f),
             new Vector3(-1.4f, 0f, 0f),
@@ -606,9 +622,11 @@ public static class ProjectScaffolder
             new Vector3(0f, 0f, -1.4f),
         };
 
-        foreach (Vector3 offset in stoolOffsets)
+        foreach (Vector3 offset in chairOffsets)
         {
-            BuildCylinder(parent, "BarTableStool", center + offset + new Vector3(0f, 0.5f, 0f), 0.3f, 1f, stoolMat);
+            Vector3 chairPosition = center + offset;
+            Quaternion facingTable = Quaternion.LookRotation((center - chairPosition).normalized, Vector3.up);
+            PlaceRangeProp(chairPrefab, parent, chairPosition, facingTable).name = "TableChair";
         }
     }
 
@@ -755,14 +773,13 @@ public static class ProjectScaffolder
     }
 
     /// <summary>Places a wagon and a dynamite crate in one lane, each with a few medallion
-    /// targets mounted on the face pointing back toward that lane's own spawn point.
-    /// laneOriginX is that lane's spawn X position (+-10*gallerySizeScale - see BuildArenaScene);
-    /// prop X positions are fractions of it (0.5 and 0.4, matching the original 5/4 out of 10)
-    /// so they stay proportionally between the spawn and the wall regardless of gallerySizeScale,
-    /// same reasoning as BuildWallMountedTargets' fractional spread. Z offsets scale directly by
-    /// gallerySizeScale since they aren't derived from any other already-scaled value. Positions/
-    /// rotations are still a first guess overall - not yet visually confirmed against the actual
-    /// prop meshes.</summary>
+    /// targets mounted on the face pointing back toward that lane's own spawn point, plus a
+    /// scattering of decorative clutter around them (see BuildLaneDecoration). laneOriginX is
+    /// that lane's spawn X position (+-10*gallerySizeScale - see BuildArenaScene); its sign is all
+    /// that's used here (via laneSign) since the wagon/crate/decoration positions themselves are
+    /// hand-placed absolute values for Lane B, mirrored onto Lane A - see the comment above the
+    /// wagon placement below. Visually confirmed in-Editor for Lane B; Lane A relies on the mirror
+    /// being correct rather than its own separate look.</summary>
     private static void BuildLaneProps(Transform parent, float laneOriginX, float gallerySizeScale, Material defaultMat, Material hitMat)
     {
         GameObject wagonPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PropPrefabFolder + "/Wagon.prefab");
@@ -780,20 +797,102 @@ public static class ProjectScaffolder
         float laneSign = Mathf.Sign(laneOriginX);
         Vector3 faceNormal = new Vector3(-laneSign, 0f, 0f);
 
-        // Rotated 90 degrees around Y from its raw import orientation - the wagon's long axis was
-        // sitting along world X (the same axis AddMedallionsOnPropFace measures the mounting
-        // face's *depth* from), which meant the 3 medallions below were being spread across its
-        // short axis (world Z) and cramping together. Turning the wagon a quarter-turn swaps
-        // that: AddMedallionsOnPropFace re-measures the prop's live (post-rotation) world bounds
-        // every time it's called, so with no other change it now spreads the medallions across
-        // what's actually the wagon's long side. Direction (90 vs -90) is a first guess about
-        // which side should face the player - the fit itself works either way since it only
-        // depends on the box's measured extents, not which of the two flips was chosen.
-        GameObject wagon = PlaceRangeProp(wagonPrefab, parent, new Vector3(laneOriginX * 0.5f, 0f, 3f * gallerySizeScale), Quaternion.Euler(0f, 90f, 0f));
+        // Wagon/crate position and rotation below were hand-placed in the Editor (for the lane
+        // where laneSign is positive - Lane B) once the auto-scaled props were actually visible
+        // in-scene, rather than derived from a formula - eyeballing them into a good-looking spot
+        // (and, for the wagon, a 90-degree turn so its long side actually fits the 3 medallions -
+        // see AddMedallionsOnPropFace) was more direct than reasoning about fractions of
+        // laneOriginX. Mirrored onto Lane A via MirrorXForLane/MirrorRotationForLane - a true
+        // left-right reflection across the x=0 divider wall - rather than hand-placed a second
+        // time, so both lanes stay in sync if this ever gets tuned again.
+        GameObject wagon = PlaceRangeProp(wagonPrefab, parent,
+            new Vector3(MirrorXForLane(2.961f, laneSign), 0.797f, 8.448f),
+            MirrorRotationForLane(new Quaternion(0f, 0.81915206f, 0f, 0.57357645f), laneSign));
         AddMedallionsOnPropFace(wagon, faceNormal, 3, defaultMat, hitMat);
 
-        GameObject crate = PlaceRangeProp(cratePrefab, parent, new Vector3(laneOriginX * 0.4f, 0f, -3f * gallerySizeScale), Quaternion.identity);
+        GameObject crate = PlaceRangeProp(cratePrefab, parent,
+            new Vector3(MirrorXForLane(2.63f, laneSign), 0.5f, -8.29f),
+            Quaternion.identity);
         AddMedallionsOnPropFace(crate, faceNormal, 2, defaultMat, hitMat);
+
+        BuildLaneDecoration(parent, laneSign);
+    }
+
+    /// <summary>Small hand-placed decorative clutter (rocks, a pickaxe, a campfire, gold) scattered
+    /// around Lane B's wagon/crate corner, mirrored onto Lane A the same way the wagon/crate
+    /// themselves are (see BuildLaneProps) rather than hand-placed twice. Raw pack FBX files
+    /// instantiated directly, unlike Wagon/DynamiteCrate - these already came in with their own
+    /// materials, no RangePropsSetup bake/scale/collider pass needed.</summary>
+    private static void BuildLaneDecoration(Transform parent, float laneSign)
+    {
+        PlaceDecorationFbx(parent, "GoldNugget.fbx", laneSign,
+            new Vector3(1.8197083f, 0.04582397f, -8.135717f), Quaternion.identity);
+        PlaceDecorationFbx(parent, "RockSmall1.fbx", laneSign,
+            new Vector3(2.7521286f, -0.0005430567f, -10.988062f), Quaternion.identity);
+        PlaceDecorationFbx(parent, "Pickaxe.fbx", laneSign,
+            new Vector3(3.217f, 0.54328674f, 6.791f), new Quaternion(0f, 0.73135376f, 0f, 0.6819984f));
+        PlaceDecorationFbx(parent, "RockLarge2.fbx", laneSign,
+            new Vector3(1.68f, -0.67f, -9.87f), Quaternion.identity);
+        PlaceDecorationFbx(parent, "Boulder1.fbx", laneSign,
+            new Vector3(1.72f, -0.01f, -11.38f), Quaternion.identity, Vector3.one * 0.5f);
+        PlaceDecorationFbx(parent, "GoldCrate.fbx", laneSign,
+            new Vector3(3.46f, 0.23f, -11f), new Quaternion(0f, 0.6427876f, 0f, 0.7660445f));
+        PlaceDecorationFbx(parent, "Boulder1.fbx", laneSign,
+            new Vector3(1.72f, -0.08f, 11.3f), Quaternion.identity, Vector3.one * 0.5f, nameOverride: "Boulder1 (1)");
+        PlaceDecorationFbx(parent, "Campfire.fbx", laneSign,
+            new Vector3(2.943f, 0.06f, -0.727f), new Quaternion(0.6420431f, -0.64204305f, -0.29627803f, 0.29627803f));
+    }
+
+    /// <summary>Instantiates a raw pack FBX directly (no material bake/scale/collider processing -
+    /// see BuildLaneDecoration) at a hand-placed position/rotation given for Lane B (the
+    /// positive-laneSign lane), mirrored onto whichever lane laneSign actually is via
+    /// MirrorXForLane/MirrorRotationForLane.</summary>
+    private static void PlaceDecorationFbx(Transform parent, string fbxFileName, float laneSign,
+        Vector3 positionForPositiveLane, Quaternion rotationForPositiveLane, Vector3? scale = null,
+        string nameOverride = null)
+    {
+        GameObject fbx = AssetDatabase.LoadAssetAtPath<GameObject>(WesternPackFbxFolder + "/" + fbxFileName);
+        if (fbx == null)
+        {
+            Debug.LogWarning("[ProjectScaffolder] Decoration FBX not found: " + fbxFileName + " - skipped.");
+            return;
+        }
+
+        GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(fbx);
+        instance.transform.SetParent(parent, false);
+        instance.transform.position = new Vector3(
+            MirrorXForLane(positionForPositiveLane.x, laneSign), positionForPositiveLane.y, positionForPositiveLane.z);
+        instance.transform.rotation = MirrorRotationForLane(rotationForPositiveLane, laneSign);
+        instance.transform.localScale = scale ?? Vector3.one;
+
+        if (nameOverride != null)
+        {
+            instance.name = nameOverride;
+        }
+    }
+
+    /// <summary>Mirrors an X coordinate given for Lane B (the positive-laneSign lane) onto
+    /// whichever lane laneSign actually is - the two lanes are true left-right mirror images of
+    /// each other across the x=0 divider wall (see BuildLane), so this is just a sign flip, not a
+    /// separate formula.</summary>
+    private static float MirrorXForLane(float xForPositiveLane, float laneSign)
+    {
+        return xForPositiveLane * laneSign;
+    }
+
+    /// <summary>Mirrors a rotation given for Lane B (the positive-laneSign lane) onto whichever
+    /// lane laneSign actually is. A true left-right mirror across a plane normal to X negates a
+    /// quaternion's y and z components (leaving x/w alone) - this is the general form, not just a
+    /// Y-euler-angle sign flip, so it holds for any rotation (including a compound one, like the
+    /// campfire's tilt) not just simple yaw.</summary>
+    private static Quaternion MirrorRotationForLane(Quaternion rotationForPositiveLane, float laneSign)
+    {
+        if (laneSign > 0f)
+        {
+            return rotationForPositiveLane;
+        }
+
+        return new Quaternion(rotationForPositiveLane.x, -rotationForPositiveLane.y, -rotationForPositiveLane.z, rotationForPositiveLane.w);
     }
 
     /// <summary>A wooden counter/rail at a lane's firing line, offset toward the wall from the

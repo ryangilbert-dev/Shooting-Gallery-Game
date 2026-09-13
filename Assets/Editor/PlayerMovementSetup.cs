@@ -39,13 +39,18 @@ public static class PlayerMovementSetup
 
         // Every character is normalized to roughly the same height (CharacterScaleFix), so a
         // single computed eye height works for all of them: feet sit at CharacterAttachPoint's
-        // local Y, eyes sit ~92% of the way up from there to account for characters wearing hats
-        // (measured bounds include the hat, which sits a bit above actual eye level).
+        // local Y, eyes sit some fraction of the way up from there. Lowered from 0.92 to 0.85 -
+        // playtesting found the camera sitting noticeably above actual eye level, consistent with
+        // the original guess not accounting enough for characters wearing hats (measured bounds
+        // include the hat, which sits well above actual eye level, inflating TargetHeight for
+        // those characters specifically). Still a single fraction shared by every character
+        // rather than a per-character measurement, so it won't be exactly right for all 8 - nudge
+        // further if it's still off, or still too high/low for a specific character.
         if (cameraTransform != null)
         {
             Transform attachPoint = instance.transform.Find("CharacterAttachPoint");
             float feetY = attachPoint != null ? attachPoint.localPosition.y : -1f;
-            float eyeY = feetY + CharacterScaleFix.TargetHeight * 0.92f;
+            float eyeY = feetY + CharacterScaleFix.TargetHeight * 0.85f;
 
             Vector3 pos = cameraTransform.localPosition;
             pos.y = eyeY;

@@ -416,6 +416,23 @@ some other motion.
   while aiming. Fixing that cleanly needs an upper/lower-body split via an `AvatarMask` - worth
   doing only if it actually bothers anyone in testing.
 
+## Camera eye height
+
+`PlayerMovementSetup` positions the first-person camera at a single computed eye height shared by
+every character (they're all normalized to roughly the same height via `CharacterScaleFix`): feet
+at `CharacterAttachPoint`'s local Y, eyes some fraction of `CharacterScaleFix.TargetHeight` above
+that. Originally guessed at 0.92 (close to a real person's actual eye-to-height ratio), but
+playtesting found it sitting noticeably above actual eye level - lowered to **0.85**. The likely
+reason 0.92 read as too high: `TargetHeight` comes from a *measured* mesh bounds that includes a
+hat for characters wearing one, inflating the "total height" those characters get normalized to,
+which pushes 92% of it well above where their eyes actually are. Still one fraction shared by all
+8 characters rather than a per-character measurement, so it's an approximation, not exact for
+every one of them - nudge the `0.85f` in `PlayerMovementSetup.cs` further if it's still off, or
+notably better/worse for one specific character than the others. **Not yet re-confirmed after this
+change** - re-run **Tools > Shooting Gallery > Setup Player Movement** to pick it up (it's baked
+into `PlayerPrefab` at setup time, not computed live - see "Finding & tuning the revolver" above
+for the same live-vs-baked distinction on the weapon offsets).
+
 ## Duel: lives, headshot-only hitbox, and the practice dummy
 
 The first slice of the actual duel exchange (M4): both players have 3 lives (shown as a
@@ -520,9 +537,13 @@ wall up or down. Two fixes, both plain static geometry (not `WallController`-dri
   across it. All three are built in `ProjectScaffolder.BuildArenaScene`, right after the wall.
 
 **Gallery room is 30% larger** (`gallerySizeScale` in `ProjectScaffolder.BuildArenaScene`) -
-applied uniformly to the floor plan (both X and Z) and everything positioned within it (lane
-origins, the divider wall's length, wall-mounted target spread, foreground prop positions), so
-proportions stay correct rather than one axis stretching. The end caps/ankle wall/bar room
+applied uniformly to the floor plan (both X and Z) and most things positioned within it (lane
+origins, the divider wall's length, wall-mounted target spread), so proportions stay correct
+rather than one axis stretching. **Exception**: the wagon/crate/decoration cluster below is now
+hand-placed at fixed absolute coordinates rather than a `gallerySizeScale`-derived formula, so it
+won't automatically stay proportional if `gallerySizeScale` changes again - re-placing (eyeball in
+the Editor, update the numbers in `BuildLaneProps`/`BuildLaneDecoration`, mirror is automatic) would
+be needed at that point. The end caps/ankle wall/bar room
 position/door trigger are all derived from the gallery's actual current half-width/half-depth and
 the wall's actual current length (not separately hardcoded numbers), specifically so a future
 change to `gallerySizeScale` can't leave any of them out of sync with the others the way plain
@@ -537,18 +558,35 @@ spawn point and the divider wall. The wagon carries 3 more medallion targets, th
 on the face pointing back toward that lane's spawn (same medallion sizing/mechanic as the
 wall-mounted ones).
 
-**Wagon rotated 90 degrees so its 3 medallions actually fit** - playtesting found the wagon's long
-axis sitting along world X, the same axis `AddMedallionsOnPropFace` measures the mounting face's
+**Wagon rotated so its 3 medallions actually fit** - playtesting found the wagon's long axis
+sitting along world X, the same axis `AddMedallionsOnPropFace` measures the mounting face's
 *depth* from, which left the 3 medallions spread across its short axis (world Z) instead and
-cramped together. `BuildLaneProps` now places it with a `Quaternion.Euler(0, 90, 0)` instead of
-identity - no change needed to the medallion placement code itself, since it re-measures the
-prop's live (post-rotation) world bounds on every call rather than assuming a fixed orientation,
-so it automatically spreads across whichever axis is actually long once the prop itself turns.
-**The exact direction (90 vs -90) is an unconfirmed guess** about which side of the wagon should
-face the player - the fit itself works either way since it's driven purely by measured extents,
-not by which of the two flips was chosen; flip the sign in `BuildLaneProps` if the wrong side ends
-up facing the lane. Needs **Rebuild Arena Scene Only** to pick up, and a look in the Editor to
-confirm both the fit and which face ends up visible.
+cramped together. Turning the wagon roughly a quarter-turn fixed it - no change needed to the
+medallion placement code itself, since it re-measures the prop's live (post-rotation) world
+bounds on every call rather than assuming a fixed orientation, so it automatically spreads across
+whichever axis is actually long once the prop itself turns. The initial guess (`Quaternion.Euler(0,
+90, 0)`) was then hand-tuned further in the Editor once actually visible (see "Wagon/crate
+position and decoration are now hand-placed, and mirrored across lanes" just below) - both the fit
+and which face ends up visible are confirmed now, not a guess.
+
+**Wagon/crate position and decoration are now hand-placed, and mirrored across lanes**: rather
+than reasoning about fractions of `laneOriginX` for where the wagon/crate should sit, their
+position and rotation are now hand-placed values (tuned directly in the Editor once the auto-scaled
+props were actually visible) for Lane B, plus a scattering of decorative clutter around them -
+`GoldNugget`, `RockSmall1`, `RockLarge2`, two `Boulder1`s, `Pickaxe`, `GoldCrate`, `Campfire` (raw
+`Assets/Art/Mini PSX Western Pack/FBX` files instantiated directly via `BuildLaneDecoration`/
+`PlaceDecorationFbx` - these came in with their own materials already, unlike Wagon/DynamiteCrate,
+so no `RangePropsSetup` bake/scale/collider pass was needed for them). Lane A gets the same layout
+automatically via `MirrorXForLane`/`MirrorRotationForLane` - a true left-right reflection across
+the x=0 divider wall (negate the X position; negate a rotation quaternion's y/z components, which
+holds for *any* rotation, not just a simple yaw, which is why the campfire's compound tilt mirrors
+correctly too) - rather than being hand-placed a second time. **Practical implication**: retuning
+Lane B's layout in the Editor no longer updates Lane A - the new correct workflow is tune Lane B's
+numbers in `BuildLaneProps`/`BuildLaneDecoration` (in code) and re-run **Rebuild Arena Scene Only**,
+which regenerates *both* lanes from the same hand-placed-for-B values. Hand-editing objects
+directly in the Editor again (rather than through the scaffolding code) would only affect whichever
+lane was touched, and would be silently lost/overwritten on the next rebuild - same caveat as every
+other scaffolded object in this project.
 
 **Shooting counter**: a wooden counter/rail (`ShootingCounter`, `ProjectScaffolder.BuildShootingCounter`)
 at each lane's firing line, right where the player spawns - inspired by real shooting-gallery
@@ -580,29 +618,43 @@ it later if one gets added.
 - The shooting counter's exact size/offset-from-spawn (`BuildShootingCounter`) is likewise a
   first guess, not yet seen in the Editor.
 
-## Bar interior (greybox furniture pass)
+## Bar interior (furniture pass)
 
 The bar room went from a plain empty 14x18 box to a furnished 22x22 tavern layout
 (`ProjectScaffolder.BuildBarInterior`), loosely modeled on a real tavern floor-plan reference
 photo: a bar counter with shelving along the east wall (the far side from the gallery doorway on
-the west) with a row of stools, four round dining tables each with four stools scattered across
-the remaining floor, and a couple of barrels just inside the entrance. Everything's sized relative
-to characters standing ~3.33 units tall (counter/tables/stools all use the same height reasoning
-as the gallery's `ShootingCounter`) rather than copied directly from the reference's own
-proportions.
+the west) with a row of seats, four poker tables each with four chairs scattered across the
+remaining floor, and a couple of barrels just inside the entrance. Everything's sized relative to
+characters standing ~3.33 units tall (counter/tables/chairs all use the same height reasoning as
+the gallery's `ShootingCounter`) rather than copied directly from the reference's own proportions.
 
-**Deliberately greybox**: every piece is a plain colored primitive (`BuildBox`/`BuildCylinder`),
-not an imported prop, even though the project does have tavern-appropriate assets now (`Chair`,
-`PokerTable`, `Moonshine`, etc. in `Assets/Art/Mini PSX Western Pack`) - this pass is about
-getting the room's layout and scale right first; swapping in real props later is a separate,
-smaller job once the blockout is confirmed to feel right. Also **not** attempted: the reference's
-octagonal bay-window alcove - that's a room-shape/architecture change, not furniture, and the room
-stays a plain rectangular shell for now.
+**Real furniture, not greybox anymore**: the original pass used plain colored cylinders for every
+table and stool as a stand-in while getting the room's layout/scale right. Once that was confirmed
+to fit, they were swapped for real `Assets/Art/Mini PSX Western Pack` props via a new
+`BarFurnitureSetup` tool (same bake-material/auto-scale/add-collider recipe as `RangePropsSetup`
+uses for the gallery's Wagon/DynamiteCrate) - dining tables are now `PokerTable`, their stools are
+now `Chair`, and the counter's own row of stools are `LogStump` instead (a shorter, more rustic
+seat, deliberately different from the dining chairs). The counter/shelf/barrels themselves stay
+plain colored primitives - no equivalent imported asset was worth building a pipeline for those.
+- **One-time setup step**: run **Tools > Shooting Gallery > Setup Bar Furniture (Poker Table,
+  Chair, Log Stump)** once (builds the three prefabs, same pattern as **Setup Range Props**).
+  Then **Rebuild Arena Scene Only** to actually place them.
+- **Chairs and log stumps are turned to face the table/counter** they belong to -
+  `Quaternion.LookRotation` toward the table center (chairs) or toward the counter (stumps).
+  **Which local axis each FBX actually considers its own "front" is an unconfirmed guess** - if
+  they're all facing backwards once visible, flip the direction passed to `LookRotation` in
+  `BuildBarTable`/`BuildBarInterior` (same class of guess as the wagon's original rotation, before
+  that got hand-tuned - see "Lane barriers and foreground range props" above).
+- Target heights (`BarFurnitureSetup.cs`: PokerTable 0.9, Chair 1.0, LogStump 0.6) are a first
+  guess, same caveat as the range props' own target heights - not yet visually confirmed.
 
-The bar's spawn points moved to just inside the door (a clear patch of floor ahead of the new
+Also **not** attempted: the reference's octagonal bay-window alcove - that's a room-shape/
+architecture change, not furniture, and the room stays a plain rectangular shell for now.
+
+The bar's spawn points moved to just inside the door (a clear patch of floor ahead of the
 furniture) to make room for everything - rebuilding requires **Tools > Shooting Gallery > Rebuild
 Arena Scene Only**. **Not yet visually confirmed** - first pass at fitting a counter, four tables,
-and their stools into the room without anything overlapping; expect some repositioning once it's
+and their chairs into the room without anything overlapping; expect some repositioning once it's
 actually visible.
 
 ## Common gotchas
@@ -654,6 +706,8 @@ Under **Tools > Shooting Gallery** in the Editor menu bar:
   "Joining over the internet with a room code" above.
 - **Setup Range Props (Wagon + Dynamite Crate)** — see "Lane barriers and foreground range props"
   above. Run before rebuilding the Arena scene, same as the character-visual tools.
+- **Setup Bar Furniture (Poker Table, Chair, Log Stump)** — see "Bar interior (furniture pass)"
+  above. Run before rebuilding the Arena scene, same as the range props tool.
 - **Capture Revolver Preview** — renders the revolver prefab to a PNG for a quick visual check
   without needing to test in-game (used heavily to fix its orientation).
 - **Diagnostics > Run Wall Drop Diagnostic** — hosts a session and directly forces 10 hits to
