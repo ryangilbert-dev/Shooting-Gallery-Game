@@ -351,11 +351,20 @@ namespace ShootingGallery.Networking
         /// match, e.g. the conflict was actually about a different lobby entirely.</summary>
         private async Task<Lobby> FindAlreadyJoinedLobbyByCodeAsync(string lobbyCode)
         {
+            // GetJoinedLobbiesAsync's own implementation returns the raw (possibly null) response
+            // body directly rather than normalizing an empty/missing result to an empty list - a
+            // bare foreach over that would be a real NullReferenceException, not a hypothetical
+            // one, so guard it explicitly rather than trusting the SDK to always hand back a list.
             List<string> joinedLobbyIds = await LobbyService.Instance.GetJoinedLobbiesAsync();
+            if (joinedLobbyIds == null)
+            {
+                return null;
+            }
+
             foreach (string lobbyId in joinedLobbyIds)
             {
                 Lobby candidate = await LobbyService.Instance.GetLobbyAsync(lobbyId);
-                if (string.Equals(candidate.LobbyCode, lobbyCode, StringComparison.OrdinalIgnoreCase))
+                if (candidate != null && string.Equals(candidate.LobbyCode, lobbyCode, StringComparison.OrdinalIgnoreCase))
                 {
                     return candidate;
                 }
