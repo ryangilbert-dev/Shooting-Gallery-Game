@@ -176,6 +176,7 @@ GameObject:
   - component: {fileID: 8085598651492635571}
   - component: {fileID: 514660646272357157}
   - component: {fileID: 18158368181219296}
+  - component: {fileID: 914869772716081440}
   m_Layer: 2
   m_Name: PlayerPrefab
   m_TagString: Untagged
@@ -510,3 +511,18 @@ MonoBehaviour:
   rowSpacing: 30
   winBackgroundColor: {r: 0.1, g: 0.45, b: 0.15, a: 0.8}
   loseBackgroundColor: {r: 0.5, g: 0.1, b: 0.1, a: 0.8}
+--- !u!114 &914869772716081440
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6dec493004c18a6478fa3711cd8a6d73, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.UI.RoomCodeHUD
+  ShowTopMostFoldoutHeaderGroup: 1
+  leftMargin: 24
+  topMargin: 24

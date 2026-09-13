@@ -31,6 +31,13 @@ namespace ShootingGallery.Networking
 
         public const ushort DefaultPort = 7777;
 
+        /// <summary>The room code from the most recent StartHostWithRelayAsync call, if any -
+        /// null/empty if this session never hosted over Relay (e.g. joined instead, or used the
+        /// direct-IP path). Survives the Menu -> Arena scene transition since this whole object is
+        /// DontDestroyOnLoad, so RoomCodeHUD can keep showing it once actually in the bar - the
+        /// menu screen that originally displayed it is long gone by then.</summary>
+        public string LastHostJoinCode { get; private set; }
+
         // SetHostRelayData/SetClientRelayData's final argument turned out to be a plain bool
         // (isSecure) in the installed package version, not the string connection-type identifier
         // ("dtls"/"udp") an older/different version apparently uses - found via an actual compile
@@ -136,6 +143,7 @@ namespace ShootingGallery.Networking
 
             Allocation allocation = await RelayService.Instance.CreateAllocationAsync(maxOtherPlayers);
             string joinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            LastHostJoinCode = joinCode;
 
             UnityTransport transport = NetworkManager.Singleton.GetComponent<UnityTransport>();
             transport.SetHostRelayData(
