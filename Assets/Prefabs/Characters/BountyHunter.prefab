@@ -60,6 +60,14 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -2174442374076134797, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.16523375
+      objectReference: {fileID: 0}
+    - target: {fileID: -2174442374076134797, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.049669564
+      objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
       propertyPath: m_Name
       value: BountyHunter
@@ -68,6 +76,22 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: e4ca60f5b939aca4a8a76cb1b27acb02, type: 2}
+    - target: {fileID: 5125518106648718185, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.014549749
+      objectReference: {fileID: 0}
+    - target: {fileID: 5125518106648718185, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.0632945
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: d87e1c2de503dd144b413097ac10c224, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7926839288223873370, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
@@ -87,5 +111,26 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 6606832024888792170}
   m_SourcePrefab: {fileID: 100100000, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+--- !u!1 &5625981424810752771 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 73e4104f1db0cba4fb1e20712ca1219b, type: 3}
+  m_PrefabInstance: {fileID: 4815167815198131794}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &6606832024888792170
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5625981424810752771}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 84050c8c8c7a5df4896fb299f63c8a47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.CharacterAnimationDriver
+  speedNormalizer: 5

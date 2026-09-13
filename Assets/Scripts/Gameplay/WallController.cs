@@ -10,6 +10,11 @@ namespace ShootingGallery.Gameplay
     /// Trigger it via ServerDropForSeconds() - currently called from MatchManager once a lane's
     /// hit-tracker bar fills. Runs its own countdown rather than exposing a timer NetworkVariable,
     /// since no client needs to see the remaining time yet (just the wall itself moving).
+    ///
+    /// Also gates the duel exchange itself: while the wall is down, at most one headshot may
+    /// register (see ServerTryConsumeHeadshotWindow) - the first one ends the exchange right
+    /// there by force-raising the wall immediately, and no further headshot counts until the wall
+    /// drops fresh again. This keeps a duel window a real "quick draw" - one shot decides it.
     /// </summary>
     [RequireComponent(typeof(NetworkObject))]
     public class WallController : NetworkBehaviour
@@ -26,6 +31,11 @@ namespace ShootingGallery.Gameplay
         private Vector3 loweredLocalPosition;
         private float serverDropCountdown;
 
+        // Server-only: whether a headshot has already ended the current drop window early. Reset
+        // to false only when the wall transitions from raised to freshly dropped (see
+        // ServerDropForSeconds) - not on every extension of an already-dropped wall.
+        private bool headshotConsumedThisDrop;
+
         private void Awake()
         {
             raisedLocalPosition = transform.localPosition;
@@ -36,9 +46,14 @@ namespace ShootingGallery.Gameplay
         {
             // Every client (not just the server) eases the wall toward whatever IsDropped
             // currently says, so the animation plays identically everywhere without needing its
-            // own synced position.
+            // own synced position. Skipped once it's actually reached that position (true for
+            // nearly the entire match - the wall only moves for a few seconds around a drop/raise)
+            // so sitting at rest doesn't keep dirtying/rewriting the same transform every frame.
             Vector3 target = IsDropped.Value ? loweredLocalPosition : raisedLocalPosition;
-            transform.localPosition = Vector3.MoveTowards(transform.localPosition, target, moveSpeed * Time.deltaTime);
+            if (transform.localPosition != target)
+            {
+                transform.localPosition = Vector3.MoveTowards(transform.localPosition, target, moveSpeed * Time.deltaTime);
+            }
 
             if (!IsServer || !IsDropped.Value)
             {
@@ -61,8 +76,32 @@ namespace ShootingGallery.Gameplay
                 return;
             }
 
+            if (!IsDropped.Value)
+            {
+                headshotConsumedThisDrop = false;
+            }
+
             serverDropCountdown = seconds;
             IsDropped.Value = true;
+        }
+
+        /// <summary>
+        /// Server-only: called when a headshot lands while the wall is down. Returns false (and
+        /// does nothing) if the wall isn't actually down, or a headshot already ended this same
+        /// drop window - a duel exchange only ever resolves once per drop. On success, marks this
+        /// window spent and force-raises the wall immediately instead of waiting out the rest of
+        /// its countdown.
+        /// </summary>
+        public bool ServerTryConsumeHeadshotWindow()
+        {
+            if (!IsServer || !IsDropped.Value || headshotConsumedThisDrop)
+            {
+                return false;
+            }
+
+            headshotConsumedThisDrop = true;
+            IsDropped.Value = false;
+            return true;
         }
     }
 }

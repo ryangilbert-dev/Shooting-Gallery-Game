@@ -26,6 +26,9 @@ namespace ShootingGallery.UI
         {
             if (!IsOwner)
             {
+                // A remote client watching another player has nothing to poll for below -
+                // disable outright instead of letting Update() check IsOwner every frame forever.
+                enabled = false;
                 return;
             }
 
@@ -41,8 +44,9 @@ namespace ShootingGallery.UI
         {
             // MatchManager might not exist yet at spawn time - same timing quirk PlayerController
             // works around by polling. Keep checking until it's up, then latch onto whichever
-            // lane this client actually gets assigned.
-            if (IsOwner && subscribedLane == LaneSide.None && MatchManager.Instance != null)
+            // lane this client actually gets assigned. This component is owner-only by this point
+            // (see OnNetworkSpawn), so no IsOwner check needed here.
+            if (subscribedLane == LaneSide.None && MatchManager.Instance != null)
             {
                 Subscribe();
             }
@@ -62,6 +66,10 @@ namespace ShootingGallery.UI
                 : MatchManager.Instance.PlayerBHitCount;
             hitCount.OnValueChanged += HandleHitCountChanged;
             ApplyFill(hitCount.Value);
+
+            // From here on the bar updates entirely off the OnValueChanged subscription above -
+            // nothing left for Update() to poll for, so stop being called every frame.
+            enabled = false;
         }
 
         private void Unsubscribe()
@@ -98,7 +106,15 @@ namespace ShootingGallery.UI
             canvasGO.transform.SetParent(transform, false);
             var canvas = canvasGO.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvasGO.AddComponent<CanvasScaler>();
+            // Default CanvasScaler mode (Constant Pixel Size) renders at a literal pixel size
+            // regardless of screen resolution - looks fine in the Editor's small Game view panel,
+            // comically tiny at a real build's full native resolution. Scale With Screen Size
+            // instead, relative to a 1920x1080 reference so this bar's existing pixel sizing
+            // stays meaningful.
+            var canvasScaler = canvasGO.AddComponent<CanvasScaler>();
+            canvasScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvasScaler.referenceResolution = new Vector2(1920f, 1080f);
+            canvasScaler.matchWidthOrHeight = 0.5f;
 
             var backgroundGO = new GameObject("HitBarBackground", typeof(RectTransform));
             backgroundGO.transform.SetParent(canvasGO.transform, false);

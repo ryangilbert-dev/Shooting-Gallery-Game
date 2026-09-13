@@ -174,7 +174,9 @@ GameObject:
   - component: {fileID: 5466671227527291175}
   - component: {fileID: 5498204607071548275}
   - component: {fileID: 8085598651492635571}
-  m_Layer: 0
+  - component: {fileID: 514660646272357157}
+  - component: {fileID: 18158368181219296}
+  m_Layer: 2
   m_Name: PlayerPrefab
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -433,7 +435,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.PlayerWeapon
   ShowTopMostFoldoutHeaderGroup: 1
   playerCamera: {fileID: 8849972540479262321}
-  fireRange: 50
+  fireRange: 150
   revolverPrefab: {fileID: 2450527637986887643, guid: 8134158db50e0ee45ba0290cd710f66b, type: 3}
   handBoneName: CC_Base_R_Hand
   revolverLocalPositionOffset: {x: 0, y: 0, z: 0}
@@ -451,6 +453,9 @@ MonoBehaviour:
   tracerColor: {r: 1, g: 0, b: 0, a: 1}
   tracerWidth: 0.05
   tracerDuration: 0.08
+  reloadDuration: 1.5
+  reloadTiltAngle: 25
+  reloadTiltSpeed: 4
   viewmodelMuzzleOffset: {x: 0.05, y: -0.03, z: 0.35}
 --- !u!114 &8085598651492635571
 MonoBehaviour:
@@ -469,3 +474,39 @@ MonoBehaviour:
   barFillColor: {r: 0.85, g: 0.65, b: 0.1, a: 1}
   barSize: {x: 320, y: 26}
   barBottomMargin: 40
+--- !u!114 &514660646272357157
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad0c2775f6cc4684cb427bef7d897d53, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.PlayerCombatant
+  headBoneName: CC_Base_Head
+  fallbackHeadHitboxRadius: 0.18
+  fallbackHeadHitboxLocalOffset: {x: 0, y: 0, z: 0}
+--- !u!114 &18158368181219296
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4994614983274320349}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 31f333504f107244c83f3f5f83d27b6a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.UI.LivesHUD
+  ShowTopMostFoldoutHeaderGroup: 1
+  pipAliveColor: {r: 0.85, g: 0.15, b: 0.15, a: 1}
+  pipLostColor: {r: 1, g: 1, b: 1, a: 0.15}
+  pipSize: 22
+  pipSpacing: 8
+  topMargin: 30
+  rowSpacing: 30
+  winBackgroundColor: {r: 0.1, g: 0.45, b: 0.15, a: 0.8}
+  loseBackgroundColor: {r: 0.5, g: 0.1, b: 0.1, a: 0.8}

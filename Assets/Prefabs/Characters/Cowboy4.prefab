@@ -60,9 +60,41 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: -2174442374076134797, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.16523378
+      objectReference: {fileID: 0}
+    - target: {fileID: -2174442374076134797, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.049669508
+      objectReference: {fileID: 0}
+    - target: {fileID: -786234766247014727, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.68986624
+      objectReference: {fileID: 0}
+    - target: {fileID: -786234766247014727, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0.0004656453
+      objectReference: {fileID: 0}
+    - target: {fileID: -205981160433546444, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0.0018745357
+      objectReference: {fileID: 0}
+    - target: {fileID: -205981160433546444, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.02692464
+      objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
       propertyPath: m_Name
       value: Cowboy4
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 720de3cb109ce3d448cb35b89e269e24, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7926839288223873370, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -83,5 +115,26 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5426612033595913221}
   m_SourcePrefab: {fileID: 100100000, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+--- !u!1 &3392906278296501420 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 82176f23975c2c64a91f71e35a93cf50, type: 3}
+  m_PrefabInstance: {fileID: 2582655615415550461}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &5426612033595913221
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3392906278296501420}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 84050c8c8c7a5df4896fb299f63c8a47, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShootingGallery.Gameplay.CharacterAnimationDriver
+  speedNormalizer: 5

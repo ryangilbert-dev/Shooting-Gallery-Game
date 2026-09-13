@@ -55,6 +55,15 @@ namespace ShootingGallery.Gameplay
 
             CharacterIndex.OnValueChanged += HandleCharacterIndexChanged;
             ApplyCharacterVisual(CharacterIndex.Value);
+
+            // Everything Update() does past this point (the MatchManager bootstrap below) is
+            // owner-only - a remote client watching another player has nothing left to poll for,
+            // so there's no reason to keep calling into this component every frame for the rest
+            // of the match. Same reasoning PlayerMovement already disables itself for non-owners.
+            if (!IsOwner)
+            {
+                enabled = false;
+            }
         }
 
         private void Update()
@@ -75,6 +84,12 @@ namespace ShootingGallery.Gameplay
             MatchManager.Instance.PlayerBClientId.OnValueChanged += HandleLaneAssignmentChangedForSpawn;
             MatchManager.Instance.PlayerAGalleryEntryToken.OnValueChanged += HandlePlayerAGalleryEntryToken;
             MatchManager.Instance.PlayerBGalleryEntryToken.OnValueChanged += HandlePlayerBGalleryEntryToken;
+            MatchManager.Instance.MatchResetToken.OnValueChanged += HandleMatchResetToken;
+
+            // Nothing left for Update() to do from here on - the rest of this object's behavior
+            // is entirely event-driven (the OnValueChanged subscriptions above), so there's no
+            // reason to keep polling every frame for the remainder of the match.
+            enabled = false;
         }
 
         public override void OnNetworkDespawn()
@@ -87,6 +102,7 @@ namespace ShootingGallery.Gameplay
                 MatchManager.Instance.PlayerBClientId.OnValueChanged -= HandleLaneAssignmentChangedForSpawn;
                 MatchManager.Instance.PlayerAGalleryEntryToken.OnValueChanged -= HandlePlayerAGalleryEntryToken;
                 MatchManager.Instance.PlayerBGalleryEntryToken.OnValueChanged -= HandlePlayerBGalleryEntryToken;
+                MatchManager.Instance.MatchResetToken.OnValueChanged -= HandleMatchResetToken;
             }
         }
 
@@ -107,6 +123,7 @@ namespace ShootingGallery.Gameplay
                 characterVisualPrefabs[index] == null || characterAttachPoint == null)
             {
                 GetComponent<PlayerWeapon>()?.OnCharacterVisualChanged(null);
+                GetComponent<PlayerCombatant>()?.OnCharacterVisualChanged(null);
                 return;
             }
 
@@ -120,14 +137,20 @@ namespace ShootingGallery.Gameplay
             Vector3 prefabScale = characterVisualPrefabs[index].transform.localScale;
             spawnedCharacterVisual.transform.localScale = prefabScale * characterVisualScale;
 
+            // Corrects for the Humanoid Animator's own muscle-space rest pose landing slightly
+            // off from the raw bind pose CharacterScaleFix measured - see its doc comment.
+            spawnedCharacterVisual.AddComponent<CharacterFloorAlignment>();
+
             if (placeholderBodyRenderer != null)
             {
                 placeholderBodyRenderer.enabled = false;
             }
 
-            // The revolver attaches to a hand bone inside whichever character visual is currently
-            // instantiated, so PlayerWeapon needs to know every time it's rebuilt.
+            // The revolver attaches to a hand bone, and the headshot hitbox to the head bone,
+            // inside whichever character visual is currently instantiated - both need to know
+            // every time it's rebuilt.
             GetComponent<PlayerWeapon>()?.OnCharacterVisualChanged(spawnedCharacterVisual);
+            GetComponent<PlayerCombatant>()?.OnCharacterVisualChanged(spawnedCharacterVisual);
         }
 
         private void HandleLaneAssignmentChangedForSpawn(ulong previous, ulong current)
@@ -165,6 +188,19 @@ namespace ShootingGallery.Gameplay
             if (MatchManager.Instance != null && MatchManager.Instance.GetLaneForClient(OwnerClientId) == LaneSide.B)
             {
                 TeleportSelfTo(MatchManager.Instance.GetGallerySpawnPointForClient(OwnerClientId));
+            }
+        }
+
+        /// <summary>Fired once per MatchManager.ServerResetMatch call - a match just ended (win or
+        /// lose screen shown for a few seconds) and both players go back to the bar, unlike
+        /// TryPositionAtBarSpawn's initial-connect teleport, this always fires regardless of
+        /// hasPositionedAtBarSpawn, since it needs to work every time a match ends, not just once.
+        /// </summary>
+        private void HandleMatchResetToken(int previous, int current)
+        {
+            if (MatchManager.Instance != null)
+            {
+                TeleportSelfTo(MatchManager.Instance.GetBarSpawnPointForClient(OwnerClientId));
             }
         }
 

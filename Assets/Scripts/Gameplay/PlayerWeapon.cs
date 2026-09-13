@@ -7,10 +7,13 @@ namespace ShootingGallery.Gameplay
     /// <summary>
     /// Owner-driven revolver draw/holster, ammo tracking, and firing. E toggles readied/holstered;
     /// while readied, left click fires (one of six shots, raycast-validated against
-    /// TargetController hits via a server RPC) and R reloads instantly. Ready-state/ammo aren't
-    /// server-validated yet - matches PlayerMovement's "client-authoritative for now" approach -
-    /// but the actual hit registration on a target IS server-authoritative, since that's shared
-    /// state every client needs to agree on.
+    /// TargetController hits via a server RPC) and R starts a reloadDuration-second reload (can't
+    /// fire again until it finishes; mashing R doesn't restart or stack it) - synced via
+    /// IsReloading so everyone sees the same tilt-down animation on the third-person revolver too,
+    /// not just your own viewmodel. Ready-state/ammo aren't server-validated yet - matches
+    /// PlayerMovement's "client-authoritative for now" approach - but the actual hit registration
+    /// on a target IS server-authoritative, since that's shared state every client needs to agree
+    /// on.
     ///
     /// Two separate revolver visuals exist: one parented to the character's hand bone (third
     /// person - what other players see on your body) and one parented to a point fixed to your
@@ -72,6 +75,13 @@ namespace ShootingGallery.Gameplay
         [SerializeField] private float tracerWidth = 0.05f;
         [SerializeField] private float tracerDuration = 0.08f;
 
+        [Header("Reload")]
+        [SerializeField] private float reloadDuration = 3f;
+        // Sign/magnitude not yet visually confirmed (same "tune live in Play mode" situation as
+        // the arm-raise pose above) - if it tilts the barrel up instead of down, flip the sign.
+        [SerializeField] private float reloadTiltAngle = 25f;
+        [SerializeField] private float reloadTiltSpeed = 4f; // How fast the 0-1 tilt amount moves per second.
+
         // Where the tracer visually starts, relative to ViewmodelAnchor's own (unrotated,
         // camera-aligned) local space - NOT the revolver mesh's own rotated local space, same
         // reasoning as recoil: this way "a bit forward and off to the side" always means what it
@@ -91,6 +101,13 @@ namespace ShootingGallery.Gameplay
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Owner);
 
+        // Synced (not just an owner-local timer) so everyone sees the same tilt on the
+        // third-person revolver too, not just the owner's own viewmodel.
+        public readonly NetworkVariable<bool> IsReloading = new NetworkVariable<bool>(
+            false,
+            NetworkVariableReadPermission.Everyone,
+            NetworkVariableWritePermission.Owner);
+
         private Transform currentHandBone;
         private Transform upperArmBone;
         private Transform forearmBone;
@@ -101,6 +118,8 @@ namespace ShootingGallery.Gameplay
         private Vector3 viewmodelAnchorRestPosition;
         private Quaternion viewmodelAnchorRestRotation;
         private float recoilAmount;
+        private float reloadTiltAmount;
+        private float reloadCountdown;
         private Material tracerMaterial;
 
         private void Awake()
@@ -127,10 +146,19 @@ namespace ShootingGallery.Gameplay
 
         private void Update()
         {
+            UpdateTracerPool();
+
             // Runs for every client, not just the owner - the raised-arm pose is a third-person
             // pose everyone needs to see, and reapplying every frame is what makes the Inspector
             // fields tunable live during Play mode.
             ApplyArmPose();
+
+            // Eases toward IsReloading's current value rather than snapping, same easing style
+            // as recoil below - runs for every client (not just the owner) off the synced
+            // NetworkVariable, so the third-person revolver tilts for everyone watching, not just
+            // your own viewmodel.
+            reloadTiltAmount = Mathf.MoveTowards(reloadTiltAmount, IsReloading.Value ? 1f : 0f, reloadTiltSpeed * Time.deltaTime);
+            Quaternion reloadTilt = Quaternion.Euler(reloadTiltAngle * reloadTiltAmount, 0f, 0f);
 
             // Same reasoning as the arm pose: reapplied every frame (not just when spawned) so
             // both offset pairs are tunable live in the Inspector while readied, instead of
@@ -138,13 +166,13 @@ namespace ShootingGallery.Gameplay
             if (spawnedViewmodel != null)
             {
                 spawnedViewmodel.transform.localPosition = viewmodelLocalPositionOffset;
-                spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset);
+                spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset) * reloadTilt;
             }
 
             if (spawnedRevolver != null)
             {
                 spawnedRevolver.transform.localPosition = revolverLocalPositionOffset;
-                spawnedRevolver.transform.localRotation = Quaternion.Euler(revolverLocalEulerOffset);
+                spawnedRevolver.transform.localRotation = Quaternion.Euler(revolverLocalEulerOffset) * reloadTilt;
             }
 
             // Recoil: kick the whole viewmodel anchor back and up on fire, ease back to rest.
@@ -152,7 +180,12 @@ namespace ShootingGallery.Gameplay
             // independent of whatever rotation correction the gun itself needs - the anchor is a
             // plain, unrotated child of the camera, so "back" and "up" here always mean what they
             // look like regardless of how the revolver mesh is oriented on top of it.
-            if (IsOwner && viewmodelAnchor != null)
+            //
+            // Gated on recoilAmount > 0f (rather than running unconditionally every frame) so the
+            // anchor's transform only gets touched while actually mid-recoil - idle between shots
+            // (the vast majority of playtime) costs nothing instead of dirtying/rewriting the same
+            // resting transform 60 times a second forever.
+            if (IsOwner && viewmodelAnchor != null && recoilAmount > 0f)
             {
                 recoilAmount = Mathf.MoveTowards(recoilAmount, 0f, recoilRecoverySpeed * Time.deltaTime);
                 Vector3 recoilPositionOffset = new Vector3(0f, 0f, -recoilKickDistance * recoilAmount);
@@ -161,7 +194,25 @@ namespace ShootingGallery.Gameplay
                 viewmodelAnchor.localRotation = recoilRotationOffset * viewmodelAnchorRestRotation;
             }
 
-            if (!IsOwner || Keyboard.current == null)
+            if (!IsOwner)
+            {
+                return;
+            }
+
+            // Counts down independently of the input-handling below (which bails out early while
+            // holstered) so a reload started just before holstering still finishes on schedule.
+            if (IsReloading.Value)
+            {
+                reloadCountdown -= Time.deltaTime;
+                if (reloadCountdown <= 0f)
+                {
+                    CurrentAmmo.Value = MaxAmmo;
+                    IsReloading.Value = false;
+                    Debug.Log("[PlayerWeapon] Reloaded.");
+                }
+            }
+
+            if (Keyboard.current == null)
             {
                 return;
             }
@@ -176,7 +227,7 @@ namespace ShootingGallery.Gameplay
                 return;
             }
 
-            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
+            if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame && !IsReloading.Value)
             {
                 TryFire();
             }
@@ -215,12 +266,24 @@ namespace ShootingGallery.Gameplay
             Vector3 direction = playerCamera.transform.forward;
             Vector3 tracerEndPoint = origin + direction * fireRange;
 
-            if (Physics.Raycast(origin, direction, out RaycastHit hit, fireRange))
+            // Explicit QueryTriggerInteraction.Collide so the headshot hitbox (a trigger collider -
+            // see HeadHitbox) always registers regardless of the project's global "queries hit
+            // triggers" setting; Physics.DefaultRaycastLayers is passed through unchanged (rather
+            // than left implicit) so that stays explicit too - it's what keeps a shot from ever
+            // hitting a player/dummy's own body collider, which sits on the built-in "Ignore
+            // Raycast" layer specifically so shots pass through it and can only ever land on the
+            // head hitbox (see DuelSetup).
+            if (Physics.Raycast(origin, direction, out RaycastHit hit, fireRange,
+                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Collide))
             {
                 tracerEndPoint = hit.point;
 
                 NetworkObject targetNetworkObject = hit.collider.GetComponentInParent<NetworkObject>();
-                if (targetNetworkObject != null && targetNetworkObject.TryGetComponent(out TargetController _))
+                if (targetNetworkObject != null && hit.collider.GetComponent<HeadHitbox>() != null)
+                {
+                    RequestHeadshotServerRpc(new NetworkObjectReference(targetNetworkObject));
+                }
+                else if (targetNetworkObject != null && targetNetworkObject.TryGetComponent(out TargetController _))
                 {
                     RequestHitTargetServerRpc(new NetworkObjectReference(targetNetworkObject));
                 }
@@ -235,7 +298,52 @@ namespace ShootingGallery.Gameplay
             SpawnTracer(tracerStartPoint, tracerEndPoint);
         }
 
+        // A small round-robin pool instead of Instantiate+Destroy per shot - a fresh primitive
+        // (mesh renderer, collider, material assignment) is real allocation/setup cost to pay
+        // every single trigger pull, especially since firing 6 rounds and reloading is normal
+        // play. Sized to MaxAmmo, which is already more concurrent tracers than could ever be
+        // genuinely in flight at once given tracerDuration is a fraction of a second.
+        private GameObject[] tracerPool;
+        private float[] tracerHideAtTime;
+        private int nextTracerSlot = -1;
+
         private void SpawnTracer(Vector3 start, Vector3 end)
+        {
+            EnsureTracerPool();
+
+            nextTracerSlot = (nextTracerSlot + 1) % tracerPool.Length;
+            GameObject tracerGO = tracerPool[nextTracerSlot];
+
+            Vector3 midpoint = (start + end) * 0.5f;
+            float length = Vector3.Distance(start, end);
+            tracerGO.transform.position = midpoint;
+            // The built-in cylinder mesh's height runs along its local Y axis, so align Y to the
+            // shot direction and let X/Z stay as thin as tracerWidth wants them.
+            tracerGO.transform.rotation = Quaternion.FromToRotation(Vector3.up, end - start);
+            // Default cylinder height is 2 units (radius 0.5), so scale.y = length / 2 gives the
+            // actual desired length; X/Z scale is the tracer's diameter.
+            tracerGO.transform.localScale = new Vector3(tracerWidth, length * 0.5f, tracerWidth);
+
+            tracerGO.SetActive(true);
+            tracerHideAtTime[nextTracerSlot] = Time.time + tracerDuration;
+        }
+
+        private void EnsureTracerPool()
+        {
+            if (tracerPool != null)
+            {
+                return;
+            }
+
+            tracerPool = new GameObject[MaxAmmo];
+            tracerHideAtTime = new float[MaxAmmo];
+            for (int i = 0; i < tracerPool.Length; i++)
+            {
+                tracerPool[i] = CreateTracerGameObject();
+            }
+        }
+
+        private GameObject CreateTracerGameObject()
         {
             // A thin cylinder rather than a LineRenderer - a LineRenderer's line only has real
             // thickness when viewed roughly side-on (it's still just a camera-facing quad), so a
@@ -248,22 +356,32 @@ namespace ShootingGallery.Gameplay
             // so it should never physically interact with anything (or get hit by our own raycast).
             Destroy(tracerGO.GetComponent<Collider>());
 
-            Vector3 midpoint = (start + end) * 0.5f;
-            float length = Vector3.Distance(start, end);
-            tracerGO.transform.position = midpoint;
-            // The built-in cylinder mesh's height runs along its local Y axis, so align Y to the
-            // shot direction and let X/Z stay as thin as tracerWidth wants them.
-            tracerGO.transform.rotation = Quaternion.FromToRotation(Vector3.up, end - start);
-            // Default cylinder height is 2 units (radius 0.5), so scale.y = length / 2 gives the
-            // actual desired length; X/Z scale is the tracer's diameter.
-            tracerGO.transform.localScale = new Vector3(tracerWidth, length * 0.5f, tracerWidth);
-
             var renderer = tracerGO.GetComponent<MeshRenderer>();
             renderer.material = GetTracerMaterial();
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
 
-            Destroy(tracerGO, tracerDuration);
+            tracerGO.SetActive(false);
+            return tracerGO;
+        }
+
+        /// <summary>Hides any pooled tracer whose on-screen duration has elapsed - called from
+        /// Update. Cheap no-op (one null check) for every client that's never fired a shot, since
+        /// the pool is only ever created lazily on this client's own first SpawnTracer call.</summary>
+        private void UpdateTracerPool()
+        {
+            if (tracerPool == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < tracerPool.Length; i++)
+            {
+                if (tracerPool[i].activeSelf && Time.time >= tracerHideAtTime[i])
+                {
+                    tracerPool[i].SetActive(false);
+                }
+            }
         }
 
         private Material GetTracerMaterial()
@@ -291,10 +409,33 @@ namespace ShootingGallery.Gameplay
             }
         }
 
+        /// <summary>Server-only: a shot's raycast (on the shooting client) landed specifically on
+        /// a HeadHitbox collider - see TryFire. MatchManager resolves whose life it costs (a real
+        /// opponent's or the practice dummy's) and whether the duel window is even open right now
+        /// (WallController.ServerTryConsumeHeadshotWindow) - this RPC just reports the raw event,
+        /// same trust boundary as RequestHitTargetServerRpc above.</summary>
+        [ServerRpc]
+        private void RequestHeadshotServerRpc(NetworkObjectReference targetRef)
+        {
+            if (targetRef.TryGet(out NetworkObject targetObject))
+            {
+                MatchManager.Instance?.RegisterHeadshot(OwnerClientId, targetObject);
+            }
+        }
+
+        /// <summary>Starts a reloadDuration-second reload - actually refilling CurrentAmmo and
+        /// clearing IsReloading happens in Update once that countdown elapses. No-ops if already
+        /// reloading or already full, so mashing R doesn't restart/stack the countdown.</summary>
         private void Reload()
         {
-            CurrentAmmo.Value = MaxAmmo;
-            Debug.Log("[PlayerWeapon] Reloaded.");
+            if (IsReloading.Value || CurrentAmmo.Value == MaxAmmo)
+            {
+                return;
+            }
+
+            IsReloading.Value = true;
+            reloadCountdown = reloadDuration;
+            Debug.Log("[PlayerWeapon] Reloading...");
         }
 
         /// <summary>Called by PlayerController whenever the random character visual (re)spawns,
@@ -304,9 +445,9 @@ namespace ShootingGallery.Gameplay
         {
             if (characterVisual != null)
             {
-                currentHandBone = FindDeepChild(characterVisual.transform, handBoneName);
-                upperArmBone = FindDeepChild(characterVisual.transform, upperArmBoneName);
-                forearmBone = FindDeepChild(characterVisual.transform, forearmBoneName);
+                currentHandBone = BoneFinder.FindDeepChild(characterVisual.transform, handBoneName);
+                upperArmBone = BoneFinder.FindDeepChild(characterVisual.transform, upperArmBoneName);
+                forearmBone = BoneFinder.FindDeepChild(characterVisual.transform, forearmBoneName);
                 upperArmBindRotation = upperArmBone != null ? upperArmBone.localRotation : Quaternion.identity;
                 forearmBindRotation = forearmBone != null ? forearmBone.localRotation : Quaternion.identity;
             }
@@ -395,25 +536,6 @@ namespace ShootingGallery.Gameplay
             spawnedViewmodel.transform.localPosition = viewmodelLocalPositionOffset;
             spawnedViewmodel.transform.localRotation = Quaternion.Euler(viewmodelLocalEulerOffset);
             spawnedViewmodel.transform.localScale = revolverPrefab.transform.localScale;
-        }
-
-        private static Transform FindDeepChild(Transform parent, string name)
-        {
-            if (parent.name == name)
-            {
-                return parent;
-            }
-
-            for (int i = 0; i < parent.childCount; i++)
-            {
-                Transform result = FindDeepChild(parent.GetChild(i), name);
-                if (result != null)
-                {
-                    return result;
-                }
-            }
-
-            return null;
         }
     }
 }
