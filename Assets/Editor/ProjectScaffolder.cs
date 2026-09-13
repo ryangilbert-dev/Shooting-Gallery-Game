@@ -173,12 +173,20 @@ public static class ProjectScaffolder
         Button hostButton = CreateButton(canvasGO.transform, "HostButton", "Host", new Vector2(0.35f, 0.4f));
         Button joinButton = CreateButton(canvasGO.transform, "JoinButton", "Join", new Vector2(0.65f, 0.4f));
 
+        // Host now waits (via Lobby - see ConnectionManager) for a real second player before
+        // loading the Arena scene at all, which took away the old "just click Host and go test
+        // the dummy solo" shortcut. This is the replacement for that specific case - a plain
+        // direct-IP local host (ConnectionManager.StartHost, no Relay/Lobby round trip at all,
+        // since nobody else is ever going to connect) that loads Arena immediately.
+        Button practiceSoloButton = CreateButton(canvasGO.transform, "PracticeSoloButton", "Practice Solo", new Vector2(0.5f, 0.3f));
+
         GameObject menuGO = new GameObject("MainMenuUI");
         var menuUI = menuGO.AddComponent<MainMenuUI>();
         var so = new SerializedObject(menuUI);
         so.FindProperty("joinCodeField").objectReferenceValue = codeField;
         so.FindProperty("hostButton").objectReferenceValue = hostButton;
         so.FindProperty("joinButton").objectReferenceValue = joinButton;
+        so.FindProperty("practiceSoloButton").objectReferenceValue = practiceSoloButton;
         so.FindProperty("statusText").objectReferenceValue = status;
         so.FindProperty("roomCodeDisplayText").objectReferenceValue = roomCode;
         so.FindProperty("arenaSceneName").stringValue = "Arena";

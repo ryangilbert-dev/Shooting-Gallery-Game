@@ -8,15 +8,19 @@ using UnityEngine.UI;
 
 namespace ShootingGallery.UI
 {
-    /// <summary>Host/Join menu, built on Unity Relay so friends can connect over the real
-    /// internet with just a short room code - no IP address, no port forwarding. Talks only to
-    /// ConnectionManager, never to UnityTransport or the Relay/Authentication services directly.
-    /// </summary>
+    /// <summary>Host/Join menu, built on Unity Lobby + Relay together so friends can connect over
+    /// the real internet with just a short room code - no IP address, no port forwarding, and
+    /// (thanks to Lobby) no race against Relay's 60-second lone-host timeout while a code gets
+    /// shared and typed in (see ConnectionManager's class-level "Why Lobby" note). A third
+    /// "Practice Solo" option hosts a plain local session with no internet-facing setup at all,
+    /// for testing alone against the practice dummy. Talks only to ConnectionManager, never to
+    /// UnityTransport or the Relay/Lobby/Authentication services directly.</summary>
     public class MainMenuUI : MonoBehaviour
     {
         [SerializeField] private InputField joinCodeField;
         [SerializeField] private Button hostButton;
         [SerializeField] private Button joinButton;
+        [SerializeField] private Button practiceSoloButton;
         [SerializeField] private Text statusText;
         [SerializeField] private Text roomCodeDisplayText;
         [SerializeField] private string arenaSceneName = "Arena";
@@ -35,6 +39,7 @@ namespace ShootingGallery.UI
         {
             hostButton.onClick.AddListener(OnHostClicked);
             joinButton.onClick.AddListener(OnJoinClicked);
+            practiceSoloButton.onClick.AddListener(OnPracticeSoloClicked);
         }
 
         private void OnDestroy()
@@ -53,18 +58,18 @@ namespace ShootingGallery.UI
 
             try
             {
-                SetStatus("Creating room...");
-                string joinCode = await ConnectionManager.Instance.StartHostWithRelayAsync();
-                SetRoomCode(joinCode);
-
-                // Unity Relay gives a lone host (bound, but no peer connected yet) a hard 60-second
-                // window before tearing the allocation down - confirmed Relay server behavior, not
-                // something any client-side setting can extend (see NOTES.md). The only real lever
-                // we have is cutting down how long it takes a human to get the code from this
-                // screen into a friend's Join field, so copy it to the clipboard immediately rather
-                // than relying on them reading/retyping six characters correctly under time
-                // pressure.
-                GUIUtility.systemCopyBuffer = joinCode;
+                // Lobby-backed hosting (see ConnectionManager's class-level "Why Lobby" note) -
+                // this is what actually fixes the "friend didn't type the code in time" failure:
+                // the code shown/shared below is a Lobby code, kept alive indefinitely by a
+                // heartbeat timer rather than racing Relay's 60-second lone-host cutoff, and the
+                // real Relay connection only ever gets created the instant a player has already
+                // joined that lobby and is ready for it. Critically, that means this whole call
+                // doesn't return until a second player has already joined - so the code has to be
+                // surfaced via onRoomCodeReady the moment it actually exists, not from the return
+                // value, or it would never appear on screen at all during the wait (exactly what
+                // was being seen: stuck on "Waiting for a player to join..." with no code visible
+                // or shareable anywhere).
+                await ConnectionManager.Instance.StartHostWithLobbyAsync(SetStatus, HandleRoomCodeReady);
                 SetStatus("Hosting - loading arena...");
                 NetworkManager.Singleton.SceneManager.LoadScene(arenaSceneName, LoadSceneMode.Single);
             }
@@ -72,6 +77,31 @@ namespace ShootingGallery.UI
             {
                 Debug.LogError("[MainMenuUI] Failed to start host: " + e);
                 SetStatus("Failed to start host - " + e.Message);
+                SetInteractable(true);
+            }
+        }
+
+        /// <summary>The old "just click Host and go" shortcut, now specifically for testing
+        /// alone. The Lobby-backed Host flow above deliberately waits for a real second player
+        /// before ever loading Arena, which means it can't double as a quick way to reach the
+        /// practice dummy solo anymore - this restores that by hosting a plain direct-IP session
+        /// with no Relay/Lobby round trip at all, since nobody else is going to connect to
+        /// it.</summary>
+        private void OnPracticeSoloClicked()
+        {
+            DisableLocalAudioListener();
+            SetInteractable(false);
+            SetStatus("Starting solo practice...");
+
+            try
+            {
+                ConnectionManager.Instance.StartHost();
+                NetworkManager.Singleton.SceneManager.LoadScene(arenaSceneName, LoadSceneMode.Single);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError("[MainMenuUI] Failed to start solo practice: " + e);
+                SetStatus("Failed to start - " + e.Message);
                 SetInteractable(true);
             }
         }
@@ -91,7 +121,11 @@ namespace ShootingGallery.UI
 
             try
             {
-                await ConnectionManager.Instance.StartClientWithRelayAsync(code);
+                // Lobby-backed joining (see ConnectionManager's class-level "Why Lobby" note) -
+                // this call itself waits for the host to actually open the Relay connection before
+                // ever calling StartClientWithRelayAsync internally, so by the time we reach the
+                // status line below, Netcode's own handshake is the only thing left to complete.
+                await ConnectionManager.Instance.StartClientWithLobbyAsync(code, SetStatus);
                 SetStatus("Connected to Relay - waiting for host...");
                 BeginWaitingForConnection();
             }
@@ -140,8 +174,8 @@ namespace ShootingGallery.UI
 
             joinResolved = true;
             CleanupJoinWatch();
-            SetStatus("Failed to join - disconnected before connecting (room may be full, the " +
-                       "code may have expired, or the host isn't running anymore).");
+            SetStatus("Failed to join - disconnected before connecting (room may be full, or " +
+                       "the host isn't running anymore).");
             SetInteractable(true);
         }
 
@@ -195,6 +229,7 @@ namespace ShootingGallery.UI
         {
             hostButton.interactable = interactable;
             joinButton.interactable = interactable;
+            practiceSoloButton.interactable = interactable;
         }
 
         private void SetStatus(string message)
@@ -205,15 +240,30 @@ namespace ShootingGallery.UI
             }
         }
 
+        /// <summary>Called by ConnectionManager the instant the room code actually exists -
+        /// which, for the Lobby-backed host flow, is well before StartHostWithLobbyAsync itself
+        /// returns (it doesn't return until someone's already joined). Displaying it here rather
+        /// than after the await is what makes it visible/shareable during the wait at all.
+        /// </summary>
+        private void HandleRoomCodeReady(string code)
+        {
+            SetRoomCode(code);
+
+            // Convenience for pasting into chat/voice text - not a race against any timeout, since
+            // the Lobby code doesn't expire on its own while ConnectionManager keeps heartbeating
+            // it.
+            GUIUtility.systemCopyBuffer = code;
+        }
+
         private void SetRoomCode(string code)
         {
             if (roomCodeDisplayText != null)
             {
-                // The urgency here isn't decoration - a lone host has a hard, Unity-enforced 60
-                // second window before Relay tears the allocation down (see the comment in
-                // OnHostClicked / NOTES.md), so whoever's reading this needs to know to move fast
-                // rather than casually alt-tabbing to find a friend to send it to.
-                roomCodeDisplayText.text = "Room Code: " + code + "\n(copied - share it now, expires in ~60s if unused)";
+                // Unlike the old raw-Relay code, this Lobby code doesn't race a 60-second cutoff -
+                // ConnectionManager keeps heartbeating the lobby alive for as long as this screen
+                // (and then RoomCodeHUD, once in the bar) is waiting for someone to join. No need
+                // to convey urgency here, just that it's already on the clipboard.
+                roomCodeDisplayText.text = "Room Code: " + code + "\n(copied to clipboard)";
             }
         }
     }

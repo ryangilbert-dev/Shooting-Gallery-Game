@@ -7,17 +7,20 @@ using UnityEngine.UI;
 namespace ShootingGallery.UI
 {
     /// <summary>
-    /// Host-only reminder of the Relay room code, shown top-left while still in the bar
+    /// Host-only reminder of the room code, shown top-left while still in the bar
     /// (GamePhase.WaitingForPlayers) so whoever's hosting can read it out to a friend without
     /// needing to alt-tab back to a main menu that's already been unloaded - MainMenuUI's own
     /// room code display only exists for the few seconds before the Arena scene loads. Built
     /// entirely from code at runtime, same as LivesHUD/HitTrackerHUD.
     ///
     /// Only ever shows anything for the client that's actually hosting (ConnectionManager.
-    /// LastHostJoinCode is only ever set on the machine that called StartHostWithRelayAsync) -
-    /// a joining client's copy of this component just never has a code to show. Also blank for a
-    /// host that used the direct-IP path (StartHost, no Relay) instead, since there's no code to
-    /// read out in that case.
+    /// LastHostJoinCode is only ever set on the machine that called StartHostWithLobbyAsync) - a
+    /// joining client's copy of this component just never has a code to show. Also blank for the
+    /// "Practice Solo" path (StartHost, no Lobby/Relay), since there's no one to read a code out
+    /// to in that case. In practice this rarely has long to actually show anything now -
+    /// StartHostWithLobbyAsync doesn't even load this scene until a second player has already
+    /// joined the lobby, so by the time this spawns that player's Netcode handshake is usually
+    /// already close behind (see the PlayerBClientId check in Update below).
     /// </summary>
     public class RoomCodeHUD : NetworkBehaviour
     {
@@ -31,7 +34,7 @@ namespace ShootingGallery.UI
             if (!IsOwner || !IsHost || ConnectionManager.Instance == null
                 || string.IsNullOrEmpty(ConnectionManager.Instance.LastHostJoinCode))
             {
-                // Not the host, or hosted without Relay (direct-IP) - nothing to ever show.
+                // Not the host, or hosted via "Practice Solo" (direct-IP) - nothing to ever show.
                 enabled = false;
                 return;
             }
@@ -83,12 +86,7 @@ namespace ShootingGallery.UI
             codeText.fontSize = 24;
             codeText.fontStyle = FontStyle.Bold;
             codeText.color = Color.white;
-            // A lone host only gets a hard, Unity-enforced 60 seconds before Relay tears an
-            // unjoined allocation down (confirmed Relay server behavior - see NOTES.md), so by the
-            // time anyone's actually reading this in the bar, it may already be stale if nobody
-            // connected right away. Flagged rather than shown as if it's evergreen.
-            codeText.text = "Room Code: " + ConnectionManager.Instance.LastHostJoinCode +
-                              "\n(may have expired if unused for ~60s - rehost if a friend can't join)";
+            codeText.text = "Room Code: " + ConnectionManager.Instance.LastHostJoinCode;
         }
     }
 }

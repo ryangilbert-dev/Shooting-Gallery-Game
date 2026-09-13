@@ -4,34 +4,42 @@ A running reference for things that come up while working in the Unity Editor.
 Claude keeps this updated as we go — if something here goes stale or a new
 question comes up a lot, just ask and it'll get added/fixed.
 
-## Joining over the internet with a room code (Unity Relay) - needs one-time setup
+## Joining over the internet with a room code (Unity Lobby + Relay) - needs one-time setup
 
 Hosting/joining used to be direct-IP only, which only works on the same network (or with manual
 router port-forwarding, which most home networks/ISPs make impractical - see the git conversation
-this came out of). Rebuilt on **Unity Relay**: the host creates a relay allocation and gets a
-short 6-character code (letters+numbers, e.g. `K3F9P2` - not purely numeric, a deliberate
-simplification over building a custom numeric-code layer on top); a friend types that code into
-Join and Relay handles all the NAT traversal - no IP address, no port forwarding, works over the
-real internet. `ConnectionManager.StartHost()`/`StartClient(ip)` (direct-IP, LAN-only) still exist
-unchanged alongside the new `StartHostWithRelayAsync()`/`StartClientWithRelayAsync(code)` -
-`WallDropDiagnostic` still uses the direct-IP path for its own single-machine automated test.
+this came out of). Rebuilt on **Unity Relay** for NAT traversal, wrapped in **Unity Lobby** for the
+actual code a human types in (see "Lobby wraps Relay" below for why both, not just Relay alone) -
+the host creates a room and gets a short 6-character code (letters+numbers, e.g. `K3F9P2` - not
+purely numeric, a deliberate simplification over building a custom numeric-code layer on top); a
+friend types that code into Join and everything else (NAT traversal, exchanging the real Relay
+connection details) happens automatically - no IP address, no port forwarding, works over the real
+internet. `ConnectionManager.StartHost()`/`StartClient(ip)` (direct-IP, LAN-only) still exist
+unchanged alongside `StartHostWithLobbyAsync()`/`StartClientWithLobbyAsync(code)` (what the menu
+actually calls) and the lower-level `StartHostWithRelayAsync()`/`StartClientWithRelayAsync(code)`
+they're built on top of - `WallDropDiagnostic` still uses the direct-IP path for its own
+single-machine automated test.
 
 **This needs setup only you can do before any of it will even compile:**
 1. Sign into Unity Hub with a Unity ID (a free account is fine).
 2. In the Editor: **Edit > Project Settings > Services** - link this project to a Unity Cloud
    project (creates one on the free tier if you don't have one yet; no credit card needed for
-   Relay at this scale).
+   Relay/Lobby at this scale).
 3. **Window > Package Manager** - switch the dropdown to "Unity Registry", search for and install
-   **Authentication** and **Relay** (this pulls in `com.unity.services.core` automatically as a
-   dependency). `ConnectionManager.cs`/`MainMenuUI.cs` reference `Unity.Services.*` namespaces
-   that don't exist until these are installed - **the project won't compile until you've done
-   this.**
+   **Authentication** and **Multiplayer** (`com.unity.services.multiplayer` - this single package
+   bundles Relay, Lobby, and `com.unity.services.core` together; there's no separate standalone
+   "Relay"/"Lobby" package to hunt for anymore). `ConnectionManager.cs`/`MainMenuUI.cs` reference
+   `Unity.Services.*` namespaces that don't exist until this is installed - **the project won't
+   compile until you've done this.**
 4. **Tools > Shooting Gallery > Rebuild Main Menu Scene Only** - regenerates the menu with the
-   new room-code display text and renamed join field (was a plain IP text box before).
+   room-code display text, renamed join field (was a plain IP text box originally), and the newer
+   **Practice Solo** button (see below).
 
-**How it plays**: click Host - after a moment (signing into UGS + creating the relay allocation)
-a room code appears on screen; read/share it however (voice chat, text). Whoever's joining types
-that code into the Join field and clicks Join - no IP needed either way.
+**How it plays**: click Host - after a moment (signing into UGS + creating the room) a room code
+appears on screen (also copied to the clipboard); read/share it however (voice chat, text).
+Whoever's joining types that code into the Join field and clicks Join - no IP needed either way.
+Click **Practice Solo** instead to skip all of this and jump straight into the gallery alone
+against the practice dummy (see "Practice Solo" below).
 
 **Already hit and fixed**: `SetHostRelayData`/`SetClientRelayData`'s last argument turned out to
 be a plain `bool` (`isSecure`) in the installed package version, not the `string` connection-type
@@ -49,21 +57,75 @@ second player's slot instead - it doesn't; `TrySpawnDummyForSoloTesting` only ev
 `MatchManager.DummyLane`, never `PlayerBClientId`, and downstream `MatchManager` logic like that
 doesn't even run until after this connection already succeeds.) Fixed by watching
 `NetworkManager.OnClientConnectedCallback`/`OnClientDisconnectCallback` for our own client ID once
-the Relay call returns, plus a `Join Timeout Seconds` (default 15) fallback if neither ever fires -
-now a dead/expired host or a version/prefab mismatch (`ForceSamePrefabs` silently rejecting a
-client running different code than the host) surfaces as a real "Failed to join - ..." message
+the Relay-level call returns, plus a `Join Timeout Seconds` (default 15) fallback if neither ever
+fires - now a dead/expired host or a version/prefab mismatch (`ForceSamePrefabs` silently rejecting
+a client running different code than the host) surfaces as a real "Failed to join - ..." message
 instead of a silent hang. **Not yet playtested** - written from the code alone.
+
+**A lone Relay host only gets ~60 seconds to get a friend connected before Relay tears the
+allocation down - a hard Unity server-side policy, confirmed via a Unity staff reply on the Unity
+Discussions forum, not adjustable from any client-side setting.** Hit in real testing: a friend
+tried to join and the code no longer worked. That's an unreasonable race against a human reading a
+6-character code out of a chat message and typing it in - so rather than fight the timeout, **Lobby
+wraps Relay** to remove the human from that race entirely:
+- `ConnectionManager.StartHostWithLobbyAsync` creates a **Lobby** first (kept alive indefinitely by
+  an ordinary 15-second heartbeat timer in code - trivial to satisfy no matter how long the human
+  side takes, unlike a person's typing speed) and only creates the actual Relay allocation the
+  instant a second player has already joined that lobby, ready to consume it near-instantly - the
+  Relay code itself never gets shown to, or typed by, a human at all anymore; it's exchanged
+  automatically through the lobby's own data (`relayJoinCode`, visible to lobby members).
+  `StartClientWithLobbyAsync` mirrors this on the joining side: join the lobby by its code, poll
+  for the host to publish that Relay code, then hand off to the existing
+  `StartClientWithRelayAsync` unchanged.
+- The code a human actually shares/types now is the **Lobby code**, which doesn't race any
+  60-second cutoff. `MainMenuUI.OnHostClicked` still copies it to the clipboard
+  (`GUIUtility.systemCopyBuffer`) as a convenience for pasting into chat/voice text, but that's no
+  longer a race against a timer, just a nicety.
+- Generous outer timeouts exist so nobody's left waiting forever with no feedback if the other side
+  never shows up: 5 minutes for the host waiting for a lobby join, 30 seconds for the client waiting
+  for the host to publish the Relay code once it's joined the lobby - both surface as a normal
+  "Failed to..." message via the existing catch blocks, not a silent hang.
+- Sources confirming the original 60-second figure this was built to route around:
+  [Relay client timeouts](https://docs.unity.com/ugs/en-us/manual/relay/manual/client-timeouts),
+  [Unity Discussions - Relay connection failure after exactly one minute](https://discussions.unity.com/t/relay-connection-failure-after-exactly-one-minute/1624125)
+  (Unity staff: "The default time to live is set to be 60 seconds when the host is alone").
+- **Already hit and fixed**: the very first version of this had the code never appear anywhere
+  during the wait at all - `MainMenuUI.OnHostClicked` only displayed/copied the code from
+  `StartHostWithLobbyAsync`'s *return value*, but that method deliberately doesn't return until a
+  second player has already joined, which is exactly the period a host needs to see and share the
+  code. Fixed with a separate `onRoomCodeReady` callback, fired the instant the lobby (and
+  therefore the code) actually exists, well before the method returns - `onStatusUpdate`'s
+  "Waiting for a player to join..." message and the room code display are two independent UI
+  elements now updating independently, not one waiting on the other.
+- **Not yet playtested end-to-end** - written from the code and API docs alone; the Lobby APIs
+  (`CreateLobbyAsync`, `JoinLobbyByCodeAsync`, `SendHeartbeatPingAsync`, etc.) come from the same
+  already-installed `com.unity.services.multiplayer` package Relay does, so no new package/project
+  setup should be needed beyond what Relay already required - but that's an inference from reading
+  the package source, not a confirmed clean first run.
+
+**"Practice Solo" - a side effect of the Lobby change worth knowing about**: the old Host button
+used to load straight into the Arena scene immediately, which incidentally doubled as the easy way
+to reach the practice dummy solo (see "Duel: lives, headshot-only hitbox, and the practice dummy"
+below). Since `StartHostWithLobbyAsync` now deliberately blocks until a real second player has
+joined the lobby, that shortcut disappeared - so a **third button, "Practice Solo"**, was added
+alongside Host/Join specifically to keep it. It calls the old plain `ConnectionManager.StartHost()`
+(direct-IP, no Relay/Lobby round trip at all, since nobody else is ever going to connect) and loads
+Arena immediately, exactly like the original Host button used to. Needs **Rebuild Main Menu Scene
+Only** to appear (see setup steps above) - **not yet visually confirmed** in the Editor.
 
 **Room code stays visible in-game, not just on the menu**: `MainMenuUI`'s own room code display
 only exists for the few seconds before the Arena scene loads - once you're actually standing in
 the bar, that menu screen (and its Text object) is gone. `ConnectionManager.LastHostJoinCode`
-holds onto the code from the most recent `StartHostWithRelayAsync` call (it's on a
-`DontDestroyOnLoad` object, so it survives the scene switch), and a new `RoomCodeHUD` component
-(same runtime-built-HUD pattern as `HitTrackerHUD`/`LivesHUD`) shows it top-left of the screen -
-host-only, and only while `MatchManager.CurrentPhase` is `WaitingForPlayers` (i.e. still in the
-bar; it hides itself once both players walk into the gallery, and reappears if `ServerResetMatch`
-sends everyone back). Blank for a joining client, and blank for a host that used the direct-IP
-path instead of Relay - both cases simply never set `LastHostJoinCode`.
+holds onto the code from the most recent successful host flow (it's on a `DontDestroyOnLoad`
+object, so it survives the scene switch), and a `RoomCodeHUD` component (same runtime-built-HUD
+pattern as `HitTrackerHUD`/`LivesHUD`) shows it top-left of the screen - host-only, and only while
+`MatchManager.CurrentPhase` is `WaitingForPlayers` *and* nobody's connected as the second player
+yet (i.e. still genuinely alone in the bar; it hides itself once a second player connects or both
+walk into the gallery, and reappears if `ServerResetMatch` sends everyone back). Blank for a
+joining client, and blank for "Practice Solo" hosting, since neither ever sets `LastHostJoinCode`.
+In practice, since `StartHostWithLobbyAsync` doesn't even load this scene until a second player has
+already joined, this component rarely has long to show anything now - by design, reaching the bar
+as a Lobby host usually means that player's Netcode handshake is already close behind.
 - **One-time setup step**: run **Tools > Shooting Gallery > Setup Room Code HUD** once - patches
   `PlayerPrefab` with the new component. Safe to re-run.
 - **Not yet visually confirmed** - written from the code alone, not seen in a real Play session
@@ -76,28 +138,7 @@ the most useful signal there's a compile error worth checking the Console for (e
 one was caught).
 
 **Still not fully confirmed working end-to-end** - a real two-machine host/join over the internet
-hasn't been playtested yet, only that the project compiles now.
-
-**A lone host only has ~60 seconds to get a friend connected before Relay tears the allocation
-down - this is a hard Unity server-side policy, not adjustable from our code.** Hit in real
-testing: a friend tried to join and the code no longer worked. Confirmed via Unity's own docs and
-a Unity staff reply on the Unity Discussions forum - a host that's bound but has no peer connected
-yet gets a fixed 60-second time-to-live; there's no parameter on `CreateAllocationAsync` (or
-anywhere else in the Relay/Netcode APIs) to extend it. The only lever actually available is
-shrinking how long it takes a human to get the code from the host's screen into the joining
-player's Join field - `OnHostClicked` now copies the code to the host's clipboard immediately
-(`GUIUtility.systemCopyBuffer`) instead of relying on someone reading and retyping six characters
-correctly under time pressure, and both the menu's room code text and the in-bar `RoomCodeHUD`
-(see below) now say plainly that it expires in ~60 seconds if unused. **Practical takeaway for
-testing**: share the code over a live voice/video call so it's typed the instant it's read out,
-not through a chat message someone might not see for a minute - that's realistically the
-difference between making the window and not. A more complete fix exists (pairing Relay with
-Unity Lobby, whose codes last far longer and are what Unity's own samples use to avoid exactly
-this race) but that's new-package/new-setup-step scope, not something to reach for mid-session -
-worth doing later if the clipboard-copy + move-fast approach keeps being too tight in practice.
-Sources: [Relay client timeouts](https://docs.unity.com/ugs/en-us/manual/relay/manual/client-timeouts),
-[Unity Discussions - Relay connection failure after exactly one minute](https://discussions.unity.com/t/relay-connection-failure-after-exactly-one-minute/1624125)
-(Unity staff: "The default time to live is set to be 60 seconds when the host is alone").
+via the Lobby-wrapped flow hasn't been playtested yet, only that the project compiles.
 
 **Confirmed in an actual play session: Relay allocations don't last forever.** After a while
 (a real session, not a hypothetical), hosting failed with "Failed to establish connection with
@@ -488,10 +529,14 @@ to apply it.
 
 See git log for the detailed history. Rough milestone state as of the last update to this file:
 - ✅ Netcode connection (host/join, lane assignment)
-- 🟡 Join-by-room-code over the internet via Unity Relay, for playtesting with friends off-LAN -
-  see "Joining over the internet with a room code" above. Account/package setup done and a
-  real compile-error signature mismatch already found and fixed; a real two-machine host/join
-  over the internet still hasn't been playtested end-to-end.
+- 🟡 Join-by-room-code over the internet via Unity Lobby + Relay, for playtesting with friends
+  off-LAN - see "Joining over the internet with a room code" above. Account/package setup done, a
+  real compile-error signature mismatch already found and fixed, and a real join attempt that hung
+  forever on "waiting for host" (now surfaces a real failure message) and a real 60-second
+  lone-host Relay cutoff (now avoided entirely by wrapping Relay in Lobby, whose code doesn't race
+  that timer) have both been hit in actual testing and addressed. A "Practice Solo" button was
+  added to keep solo dummy-testing working now that Host waits for a real second player. The
+  Lobby-wrapped flow itself still hasn't been playtested end-to-end.
 - ✅ Random character models, correctly scaled
 - ✅ WASD/mouse movement, eye-height camera
 - ✅ Bar + Gallery rooms, colored, doorway sized right
